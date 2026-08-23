@@ -9,8 +9,8 @@ AI 相关 CLI 小工具集（Go）。
 
 ## 安装
 
-构建：进入各目录执行 `go install -trimpath -buildvcs=false -ldflags "-s -w" .`，安装到 `$(go env GOPATH)/bin`
+构建：进入各目录执行 `go install -trimpath -ldflags '-s -w' .`，安装到 `$(go env GOPATH)/bin`
 
 或者 `make install NAME=ai-xxx`
 
-或者 `go install github.com/weaming/ai-xyz/ai-xxx@HEAD`
+或者 `go install -trimpath -ldflags '-s -w' github.com/weaming/ai-xyz/ai-xxx@HEAD`

@@ -1,2 +1,2 @@
 install:
-	cd $(NAME) && go install -trimpath -buildvcs=false -ldflags "-s -w" .
+	cd $(NAME) && go install -trimpath -buildvcs=false -ldflags '-s -w' .
