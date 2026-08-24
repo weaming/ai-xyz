@@ -301,7 +301,7 @@ func getJSONLThinking(message, item map[string]any) string {
 }
 
 // detectSource 根据会话 ID 和本地历史文件判断来源。
-func detectSource(sessionID, claudeDirectory, qoderDirectory string) string {
+func detectSource(sessionID, claudeDirectory, qoderDirectory, qoderAppDirectory string) string {
 	if strings.HasPrefix(sessionID, "ses_") || strings.HasSuffix(sessionID, ".jsonl") {
 		return "claude"
 	}
@@ -314,18 +314,21 @@ func detectSource(sessionID, claudeDirectory, qoderDirectory string) string {
 	if len(qoderSessionCandidates(sessionID, qoderDirectory)) > 0 {
 		return "qoder"
 	}
+	if _, err := resolveQoderAppSession(sessionID, qoderAppDirectory); err == nil {
+		return "qoder-app"
+	}
 	return "codex"
 }
 
 // loadAllSessions 加载指定来源的全部可解析会话。
-func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory string, loc *time.Location, targetDate *time.Time) ([]*SessionData, error) {
+func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qoderAppDirectory string, loc *time.Location, targetDate *time.Time, includeArchived bool) ([]*SessionData, error) {
 	var sessions []*SessionData
 
 	if source == "all" || source == "codex" {
 		if err := ensureCodexIndex(codexDatabase); err != nil {
 			return nil, err
 		}
-		sessionIDs, err := listCodexSessionIDs(codexDatabase, loc, targetDate)
+		sessionIDs, err := listCodexSessionIDs(codexDatabase, loc, targetDate, includeArchived)
 		if err != nil {
 			return nil, err
 		}
@@ -362,6 +365,10 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory stri
 				sessions = append(sessions, session)
 			}
 		}
+	}
+
+	if source == "all" || source == "qoder-app" {
+		sessions = append(sessions, listQoderAppSessions(qoderAppDirectory, loc, targetDate)...)
 	}
 
 	if len(sessions) == 0 {

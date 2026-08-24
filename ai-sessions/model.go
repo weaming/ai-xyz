@@ -86,6 +86,7 @@ type SessionData struct {
 	Source          string
 	SessionID       string
 	Path            string
+	IsArchived      bool
 	Inputs          []string
 	Tools           []string
 	FinalOutput     string

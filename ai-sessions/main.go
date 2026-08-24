@@ -15,6 +15,7 @@ var (
 	defaultCodexDatabase = filepath.Join(homeDir(), ".codex", "thread_history_1.sqlite")
 	defaultClaudeDir     = filepath.Join(homeDir(), ".claude")
 	defaultQoderDir      = filepath.Join(homeDir(), ".qoder-cn")
+	defaultQoderAppDir   = filepath.Join(homeDir(), ".qoder-cn", "cache", "projects")
 )
 
 // options 保存命令行参数。
@@ -23,11 +24,13 @@ type options struct {
 	query         string
 	turn          int
 	think         bool
+	archived      bool
 	source        string
 	dateText      string
 	codexDatabase string
 	claudeDir     string
 	qoderDir      string
+	qoderAppDir   string
 }
 
 func parseFlags() (*options, error) {
@@ -39,16 +42,18 @@ func parseFlags() (*options, error) {
 	flag.IntVar(&opts.turn, "turn", 0, "配合 --session 使用，输出指定问题序号的完整详情：问题、工具调用输入输出和回答")
 	flag.IntVar(&opts.turn, "t", 0, "")
 	flag.BoolVar(&opts.think, "think", false, "配合 --session 使用，输出会话中的中间思考过程")
-	flag.StringVar(&opts.source, "source", "all", "会话来源：all/codex/claude/qoder")
+	flag.BoolVar(&opts.archived, "archived", false, "列出 Codex 会话时包含已归档会话")
+	flag.StringVar(&opts.source, "source", "all", "会话来源：all/codex/claude/qoder/qoder-app")
 	flag.StringVar(&opts.source, "s", "all", "")
 	flag.StringVar(&opts.dateText, "date", "", "按 TZ 时区过滤日期：YYYY-MM-DD 或 all（全部日期），默认今天")
 	flag.StringVar(&opts.dateText, "d", "", "")
 	flag.StringVar(&opts.codexDatabase, "codex-db", defaultCodexDatabase, "Codex 历史数据库")
 	flag.StringVar(&opts.claudeDir, "claude-dir", defaultClaudeDir, "Claude 数据目录")
 	flag.StringVar(&opts.qoderDir, "qoder-dir", defaultQoderDir, "Qoder 数据目录")
+	flag.StringVar(&opts.qoderAppDir, "qoder-app-dir", defaultQoderAppDir, "新版 Qoder 应用会话目录")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "解析 Codex、Claude 或 Qoder 会话历史，输出输入、工具调用和最终输出。\n")
+		fmt.Fprintf(out, "解析 Codex、Claude、Qoder 或新版 Qoder 应用会话历史，输出输入、工具调用和最终输出。\n")
 		fmt.Fprintf(out, "示例：ai-sessions -q tantivy；ai-sessions -i 019... -t 2；ai-sessions --source claude\n")
 		aliases := map[string]string{"session": "i", "query": "q", "source": "s", "date": "d", "turn": "t"}
 		flag.CommandLine.VisitAll(func(f *flag.Flag) {
@@ -95,8 +100,8 @@ func getTargetDate(opts *options, loc *time.Location) (*time.Time, error) {
 
 // validate 校验参数组合是否合法。
 func (o *options) validate() error {
-	if o.source != "all" && o.source != "codex" && o.source != "claude" && o.source != "qoder" {
-		return fmt.Errorf("无效的 --source 值：%s（可选：all/codex/claude/qoder）", o.source)
+	if o.source != "all" && o.source != "codex" && o.source != "claude" && o.source != "qoder" && o.source != "qoder-app" {
+		return fmt.Errorf("无效的 --source 值：%s（可选：all/codex/claude/qoder/qoder-app）", o.source)
 	}
 	if o.turn < 0 {
 		return fmt.Errorf("问题序号必须大于 0：%d", o.turn)
@@ -139,7 +144,7 @@ func main() {
 		turnNumber := opts.turn
 		source := opts.source
 		if source == "all" {
-			source = detectSource(opts.session, opts.claudeDir, opts.qoderDir)
+			source = detectSource(opts.session, opts.claudeDir, opts.qoderDir, opts.qoderAppDir)
 		}
 		captureToolDetails := turnNumber > 0
 		captureThinking := opts.think
@@ -149,6 +154,8 @@ func main() {
 			session, err = parseCodex(opts.session, opts.codexDatabase, loc, captureToolDetails, captureThinking)
 		case "qoder":
 			session, err = parseJSONLBySource("qoder", opts.session, opts.qoderDir, loc, false, captureToolDetails, captureThinking)
+		case "qoder-app":
+			session, err = parseQoderApp(opts.session, opts.qoderAppDir, loc, captureThinking)
 		default:
 			session, err = parseJSONLBySource("claude", opts.session, opts.claudeDir, loc, false, captureToolDetails, captureThinking)
 		}
@@ -172,7 +179,7 @@ func main() {
 		return
 	}
 
-	sessions, err := loadAllSessions(opts.source, opts.codexDatabase, opts.claudeDir, opts.qoderDir, loc, targetDate)
+	sessions, err := loadAllSessions(opts.source, opts.codexDatabase, opts.claudeDir, opts.qoderDir, opts.qoderAppDir, loc, targetDate, opts.archived)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误：%v\n", err)
 		os.Exit(1)

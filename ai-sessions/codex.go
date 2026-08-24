@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +100,11 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 		return nil, err
 	}
 	defer db.Close()
+	archived, err := getCodexArchived(db, resolvedID)
+	if err != nil {
+		return nil, err
+	}
+	session.IsArchived = archived
 	rows, err := db.Query(
 		`SELECT item_type, item_json, created_at_ms, turn_id FROM thread_items WHERE thread_id = ? ORDER BY rollout_ordinal`,
 		resolvedID,
@@ -218,6 +224,53 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 	return session, nil
 }
 
+// getCodexArchived 读取 Codex 会话的归档状态，兼容没有 threads 表的旧数据库。
+func getCodexArchived(db *sql.DB, sessionID string) (bool, error) {
+	hasArchiveColumn, err := hasCodexArchiveColumn(db)
+	if err != nil {
+		return false, err
+	}
+	if !hasArchiveColumn {
+		return false, nil
+	}
+
+	var archived int
+	err = db.QueryRow("SELECT COALESCE(archived, 0) FROM threads WHERE id = ?", sessionID).Scan(&archived)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, newHistoryError("查询 Codex 会话归档状态失败：%v", err)
+	}
+	return archived != 0, nil
+}
+
+// hasCodexArchiveColumn 判断 Codex 数据库是否提供 threads.archived 元数据。
+func hasCodexArchiveColumn(db *sql.DB) (bool, error) {
+	rows, err := db.Query("PRAGMA table_info(threads)")
+	if err != nil {
+		return false, newHistoryError("读取 Codex 会话表结构失败：%v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var columnID int
+		var columnName, columnType string
+		var notNull, primaryKey int
+		var defaultValue sql.NullString
+		if err := rows.Scan(&columnID, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, newHistoryError("读取 Codex 会话表结构失败：%v", err)
+		}
+		if columnName == "archived" {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, newHistoryError("读取 Codex 会话表结构失败：%v", err)
+	}
+	return false, nil
+}
+
 // parseCodexTokenUsage 解析 Codex rollout 日志中的累计 Token 和单次命中率。
 func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64, error) {
 	rolloutPath, err := findCodexRolloutPath(sessionID, databasePath)
@@ -322,12 +375,23 @@ func maxInt(value, minimum int) int {
 }
 
 // listCodexSessionIDs 列出 Codex 历史中的会话 ID。
-func listCodexSessionIDs(databasePath string, loc *time.Location, targetDate *time.Time) ([]string, error) {
+func listCodexSessionIDs(databasePath string, loc *time.Location, targetDate *time.Time, includeArchived bool) ([]string, error) {
+	db, err := connectReadonly(databasePath)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
 	query := `
-		SELECT thread_id, MAX(created_at_ms) AS end_ms
-		FROM thread_items
-		GROUP BY thread_id`
+		SELECT thread_items.thread_id, MAX(thread_items.created_at_ms) AS end_ms
+		FROM thread_items`
 	var queryParameters []any
+	if hasArchiveColumn, err := hasCodexArchiveColumn(db); err != nil {
+		return nil, err
+	} else if !includeArchived && hasArchiveColumn {
+		query += " LEFT JOIN threads ON threads.id = thread_items.thread_id WHERE COALESCE(threads.archived, 0) = 0"
+	}
+	query += " GROUP BY thread_items.thread_id"
 	if targetDate != nil {
 		startTimestamp, endTimestamp := getDateTimestampBounds(*targetDate, loc)
 		query += " HAVING end_ms >= ? AND end_ms < ?"
@@ -335,11 +399,6 @@ func listCodexSessionIDs(databasePath string, loc *time.Location, targetDate *ti
 	}
 	query += " ORDER BY end_ms DESC"
 
-	db, err := connectReadonly(databasePath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
 	rows, err := db.Query(query, queryParameters...)
 	if err != nil {
 		return nil, newHistoryError("列出 Codex 会话失败：%v", err)
