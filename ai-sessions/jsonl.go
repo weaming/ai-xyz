@@ -389,6 +389,17 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 	return sessions, nil
 }
 
+// filterSessionsWithPlan 仅保留关联了 plan 文件的会话。
+func filterSessionsWithPlan(sessions []*SessionData) []*SessionData {
+	filtered := make([]*SessionData, 0, len(sessions))
+	for _, session := range sessions {
+		if findPlanMD(session) != "" {
+			filtered = append(filtered, session)
+		}
+	}
+	return filtered
+}
+
 // matchesDateFilter 判断会话是否满足日期过滤和内容过滤。
 func matchesDateFilter(session *SessionData, targetDate *time.Time) bool {
 	if len(session.Inputs) == 0 && len(session.Tools) == 0 && session.FinalOutput == "" {

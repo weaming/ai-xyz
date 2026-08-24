@@ -16,6 +16,7 @@ ai-sessions -d yesterday       # 昨天的会话
 ai-sessions -d all             # 全部日期的会话索引
 ai-sessions -q tantivy         # 按请求或最终响应文本过滤（不区分大小写）
 ai-sessions -archived          # Codex 列表包含已归档会话
+ai-sessions -plan              # 只看关联了 plan 文件的会话
 ai-sessions --source claude    # 只看 claude 来源
 ai-sessions -i 019abc -t 2     # 指定会话第 2 问完整详情：问题、工具调用输入输出和回答
 ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
@@ -28,6 +29,7 @@ ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
 -q, --query 文本    按请求或最终响应文本过滤
 -t, --turn 序号     配合 --session，输出指定问题的完整详情
 --think             配合 --session，输出中间思考过程
+--plan              只显示关联了 plan 文件的会话
 --archived          列出 Codex 会话时包含已归档会话
 -s, --source 来源   all/codex/claude/qoder/qoder-app，默认 all
 -d, --date 日期     YYYY-MM-DD、yesterday 或 all，按 TZ 时区过滤，默认今天

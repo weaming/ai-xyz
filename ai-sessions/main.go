@@ -24,6 +24,7 @@ type options struct {
 	query         string
 	turn          int
 	think         bool
+	plan          bool
 	archived      bool
 	source        string
 	dateText      string
@@ -42,6 +43,7 @@ func parseFlags() (*options, error) {
 	flag.IntVar(&opts.turn, "turn", 0, "配合 --session 使用，输出指定问题序号的完整详情：问题、工具调用输入输出和回答")
 	flag.IntVar(&opts.turn, "t", 0, "")
 	flag.BoolVar(&opts.think, "think", false, "配合 --session 使用，输出会话中的中间思考过程")
+	flag.BoolVar(&opts.plan, "plan", false, "只显示关联了 plan 文件的会话")
 	flag.BoolVar(&opts.archived, "archived", false, "列出 Codex 会话时包含已归档会话")
 	flag.StringVar(&opts.source, "source", sourceAll,
 		fmt.Sprintf("会话来源：%s/%s，all 表示全部", strings.Join(knownSources(), "/"), sourceAll))
@@ -188,6 +190,13 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误：%v\n", err)
 		os.Exit(1)
+	}
+	if opts.plan {
+		sessions = filterSessionsWithPlan(sessions)
+		if len(sessions) == 0 {
+			fmt.Fprintf(os.Stderr, "错误：没有找到关联 plan 文件的会话\n")
+			os.Exit(1)
+		}
 	}
 	if opts.query != "" {
 		printMatchingSessions(sessions, opts.query, loc, targetDate)
