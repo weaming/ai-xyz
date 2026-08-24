@@ -55,7 +55,7 @@ func claudeSessionCandidates(sessionID, claudeDirectory string) []string {
 // resolveJSONLSession 解析 JSONL 会话文件路径（Claude/Qoder 通用）。
 func resolveJSONLSession(source, sessionID, directory string) (string, error) {
 	var candidates []string
-	if source == "qoder" {
+	if source == sourceQoder {
 		candidates = qoderSessionCandidates(sessionID, directory)
 	} else {
 		candidates = claudeSessionCandidates(sessionID, directory)
@@ -303,28 +303,28 @@ func getJSONLThinking(message, item map[string]any) string {
 // detectSource 根据会话 ID 和本地历史文件判断来源。
 func detectSource(sessionID, claudeDirectory, qoderDirectory, qoderAppDirectory string) string {
 	if strings.HasPrefix(sessionID, "ses_") || strings.HasSuffix(sessionID, ".jsonl") {
-		return "claude"
+		return sourceClaude
 	}
 	if info, err := os.Stat(expandUser(sessionID)); err == nil && info.Mode().IsRegular() {
-		return "claude"
+		return sourceClaude
 	}
 	if len(claudeSessionCandidates(sessionID, claudeDirectory)) > 0 {
-		return "claude"
+		return sourceClaude
 	}
 	if len(qoderSessionCandidates(sessionID, qoderDirectory)) > 0 {
-		return "qoder"
+		return sourceQoder
 	}
 	if _, err := resolveQoderAppSession(sessionID, qoderAppDirectory); err == nil {
-		return "qoder-app"
+		return sourceQoderApp
 	}
-	return "codex"
+	return sourceCodex
 }
 
 // loadAllSessions 加载指定来源的全部可解析会话。
 func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qoderAppDirectory string, loc *time.Location, targetDate *time.Time, includeArchived bool) ([]*SessionData, error) {
 	var sessions []*SessionData
 
-	if source == "all" || source == "codex" {
+	if source == sourceAll || source == sourceCodex {
 		if err := ensureCodexIndex(codexDatabase); err != nil {
 			return nil, err
 		}
@@ -341,9 +341,9 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 		}
 	}
 
-	if source == "all" || source == "claude" {
+	if source == sourceAll || source == sourceClaude {
 		for _, sessionPath := range listClaudeSessionPaths(claudeDirectory) {
-			session, err := parseJSONLBySource("claude", sessionPath, claudeDirectory, loc, true, false, false)
+			session, err := parseJSONLBySource(sourceClaude, sessionPath, claudeDirectory, loc, true, false, false)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "警告：跳过 Claude 会话：%v\n", err)
 				continue
@@ -354,9 +354,9 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 		}
 	}
 
-	if source == "all" || source == "qoder" {
+	if source == sourceAll || source == sourceQoder {
 		for _, sessionPath := range listQoderSessionPaths(qoderDirectory) {
-			session, err := parseJSONLBySource("qoder", sessionPath, qoderDirectory, loc, true, false, false)
+			session, err := parseJSONLBySource(sourceQoder, sessionPath, qoderDirectory, loc, true, false, false)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "警告：跳过 Qoder 会话：%v\n", err)
 				continue
@@ -367,7 +367,7 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 		}
 	}
 
-	if source == "all" || source == "qoder-app" {
+	if source == sourceAll || source == sourceQoderApp {
 		sessions = append(sessions, listQoderAppSessions(qoderAppDirectory, loc, targetDate)...)
 	}
 

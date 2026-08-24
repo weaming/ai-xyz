@@ -43,8 +43,9 @@ func parseFlags() (*options, error) {
 	flag.IntVar(&opts.turn, "t", 0, "")
 	flag.BoolVar(&opts.think, "think", false, "配合 --session 使用，输出会话中的中间思考过程")
 	flag.BoolVar(&opts.archived, "archived", false, "列出 Codex 会话时包含已归档会话")
-	flag.StringVar(&opts.source, "source", "all", "会话来源：all/codex/claude/qoder/qoder-app")
-	flag.StringVar(&opts.source, "s", "all", "")
+	flag.StringVar(&opts.source, "source", sourceAll,
+		fmt.Sprintf("会话来源：%s/%s，all 表示全部", strings.Join(knownSources(), "/"), sourceAll))
+	flag.StringVar(&opts.source, "s", sourceAll, "")
 	flag.StringVar(&opts.dateText, "date", "", "按 TZ 时区过滤日期：YYYY-MM-DD 或 all（全部日期），默认今天")
 	flag.StringVar(&opts.dateText, "d", "", "")
 	flag.StringVar(&opts.codexDatabase, "codex-db", defaultCodexDatabase, "Codex 历史数据库")
@@ -100,8 +101,8 @@ func getTargetDate(opts *options, loc *time.Location) (*time.Time, error) {
 
 // validate 校验参数组合是否合法。
 func (o *options) validate() error {
-	if o.source != "all" && o.source != "codex" && o.source != "claude" && o.source != "qoder" && o.source != "qoder-app" {
-		return fmt.Errorf("无效的 --source 值：%s（可选：all/codex/claude/qoder/qoder-app）", o.source)
+	if o.source != sourceAll && !isValidSource(o.source) {
+		return fmt.Errorf("无效的 --source 值：%s（可选：%s/%s）", o.source, strings.Join(knownSources(), "/"), sourceAll)
 	}
 	if o.turn < 0 {
 		return fmt.Errorf("问题序号必须大于 0：%d", o.turn)
@@ -150,14 +151,14 @@ func main() {
 		captureThinking := opts.think
 		var session *SessionData
 		switch source {
-		case "codex":
+		case sourceCodex:
 			session, err = parseCodex(opts.session, opts.codexDatabase, loc, captureToolDetails, captureThinking)
-		case "qoder":
-			session, err = parseJSONLBySource("qoder", opts.session, opts.qoderDir, loc, false, captureToolDetails, captureThinking)
-		case "qoder-app":
+		case sourceQoder:
+			session, err = parseJSONLBySource(sourceQoder, opts.session, opts.qoderDir, loc, false, captureToolDetails, captureThinking)
+		case sourceQoderApp:
 			session, err = parseQoderApp(opts.session, opts.qoderAppDir, loc, captureThinking)
 		default:
-			session, err = parseJSONLBySource("claude", opts.session, opts.claudeDir, loc, false, captureToolDetails, captureThinking)
+			session, err = parseJSONLBySource(sourceClaude, opts.session, opts.claudeDir, loc, false, captureToolDetails, captureThinking)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "错误：%v\n", err)

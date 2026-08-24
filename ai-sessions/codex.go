@@ -93,7 +93,7 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 	if err != nil {
 		return nil, err
 	}
-	session := &SessionData{Source: "codex", SessionID: resolvedID, Path: resolvedPath}
+	session := &SessionData{Source: sourceCodex, SessionID: resolvedID, Path: resolvedPath}
 
 	db, err := connectReadonly(databasePath)
 	if err != nil {

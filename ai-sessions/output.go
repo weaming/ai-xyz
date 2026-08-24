@@ -73,13 +73,18 @@ func printSeparator(useColor, withBlankLines bool) {
 	printLine("─", useColor, withBlankLines)
 }
 
-// printSessionTime 输出会话起止时间、显示时区和归档状态。
+// printSessionTime 输出会话起止时间、显示时区；提供归档状态的来源附带归档标记。
 func printSessionTime(session *SessionData, loc *time.Location) {
-	archived := "NO"
-	if session.IsArchived {
-		archived = "YES"
+	timeText := formatSessionTime(session.StartedAt, session.EndedAt, loc)
+	if getSourceConfig(session.Source).hasArchive {
+		archived := "NO"
+		if session.IsArchived {
+			archived = "YES"
+		}
+		fmt.Printf("Time: %s [Archived=%s]\n", timeText, archived)
+		return
 	}
-	fmt.Printf("Time: %s [Archived=%s]\n", formatSessionTime(session.StartedAt, session.EndedAt, loc), archived)
+	fmt.Printf("Time: %s\n", timeText)
 }
 
 // formatTokenCount 将 token 数格式化为紧凑可读形式。

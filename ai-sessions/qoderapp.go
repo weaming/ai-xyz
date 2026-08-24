@@ -117,7 +117,7 @@ func extractQoderAppQuestion(content string) string {
 // parseQoderAppSession 解析新版 Qoder 会话，时间取文件修改时间。
 // captureThinking 控制是否把中间助手消息作为思考内容输出。
 func parseQoderAppSession(sessionPath string, loc *time.Location, allowEmpty, captureThinking bool) (*SessionData, error) {
-	session := &SessionData{Source: "qoder-app", SessionID: qoderAppSessionID(sessionPath), Path: sessionPath}
+	session := &SessionData{Source: sourceQoderApp, SessionID: qoderAppSessionID(sessionPath), Path: sessionPath}
 	if info, err := os.Stat(sessionPath); err == nil {
 		fileTime := info.ModTime().In(loc)
 		session.StartedAt = &fileTime

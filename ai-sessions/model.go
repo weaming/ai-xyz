@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+// 会话来源名称。
+const (
+	sourceAll      = "all"
+	sourceClaude   = "claude"
+	sourceCodex    = "codex"
+	sourceQoder    = "qoder"
+	sourceQoderApp = "qoder-app"
+)
+
 // TokenUsage 汇总会话的 token 使用量。
 type TokenUsage struct {
 	InputTokens     int
@@ -98,6 +107,41 @@ type SessionData struct {
 	PlanSlug        string
 	TokenStats      TokenUsage
 	RequestHitRates []float64
+}
+
+// sourceConfig 描述会话来源的能力差异，只放短字段。
+type sourceConfig struct {
+	hasArchive bool                      // 是否提供归档状态
+	findPlan   func(*SessionData) string // 查找关联 plan 文件，nil 表示无
+}
+
+// sourceConfigs 各来源能力配置，未列出的来源使用零值。
+var sourceConfigs = map[string]sourceConfig{
+	sourceClaude:   {findPlan: findClaudePlanBySlug},
+	sourceCodex:    {hasArchive: true},
+	sourceQoder:    {findPlan: findQoderPlanByTime},
+	sourceQoderApp: {},
+}
+
+// isValidSource 判断是否为已知的会话来源。
+func isValidSource(source string) bool {
+	_, ok := sourceConfigs[source]
+	return ok
+}
+
+// knownSources 返回排序后的全部来源名。
+func knownSources() []string {
+	names := make([]string, 0, len(sourceConfigs))
+	for name := range sourceConfigs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// getSourceConfig 返回来源配置，未知来源返回零值。
+func getSourceConfig(source string) sourceConfig {
+	return sourceConfigs[source]
 }
 
 // refreshSummary 根据对话轮次刷新会话级摘要字段。

@@ -6,16 +6,13 @@ import (
 	"time"
 )
 
-// findPlanMD 根据会话来源查找关联的 plan 文件。
+// findPlanMD 按来源配置查找关联的 plan 文件。
 func findPlanMD(session *SessionData) string {
-	switch session.Source {
-	case "claude":
-		return findClaudePlanBySlug(session)
-	case "qoder":
-		return findQoderPlanByTime(session)
-	default:
+	find := getSourceConfig(session.Source).findPlan
+	if find == nil {
 		return ""
 	}
+	return find(session)
 }
 
 // findClaudePlanBySlug 根据 slug 查找 Claude plan 文件。
