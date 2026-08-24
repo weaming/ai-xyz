@@ -46,7 +46,7 @@ func parseFlags() (*options, error) {
 	flag.StringVar(&opts.source, "source", sourceAll,
 		fmt.Sprintf("会话来源：%s/%s，all 表示全部", strings.Join(knownSources(), "/"), sourceAll))
 	flag.StringVar(&opts.source, "s", sourceAll, "")
-	flag.StringVar(&opts.dateText, "date", "", "按 TZ 时区过滤日期：YYYY-MM-DD 或 all（全部日期），默认今天")
+	flag.StringVar(&opts.dateText, "date", "", "按 TZ 时区过滤日期：YYYY-MM-DD、yesterday 或 all（全部日期），默认今天")
 	flag.StringVar(&opts.dateText, "d", "", "")
 	flag.StringVar(&opts.codexDatabase, "codex-db", defaultCodexDatabase, "Codex 历史数据库")
 	flag.StringVar(&opts.claudeDir, "claude-dir", defaultClaudeDir, "Claude 数据目录")
@@ -83,18 +83,22 @@ func parseFlags() (*options, error) {
 	return opts, nil
 }
 
-// getTargetDate 解析日期参数，返回按 TZ 过滤的目标日期，all 表示全部日期。
+// getTargetDate 解析日期参数，返回按 TZ 过滤的目标日期，支持 yesterday 和 all。
 func getTargetDate(opts *options, loc *time.Location) (*time.Time, error) {
 	if opts.dateText == "" {
 		today := getToday(loc)
 		return &today, nil
+	}
+	if opts.dateText == "yesterday" {
+		yesterday := getToday(loc).AddDate(0, 0, -1)
+		return &yesterday, nil
 	}
 	if opts.dateText == "all" {
 		return nil, nil
 	}
 	parsed, err := time.ParseInLocation("2006-01-02", opts.dateText, loc)
 	if err != nil {
-		return nil, fmt.Errorf("日期格式必须是 YYYY-MM-DD 或 all：%s", opts.dateText)
+		return nil, fmt.Errorf("日期必须是 YYYY-MM-DD、yesterday 或 all：%s", opts.dateText)
 	}
 	return &parsed, nil
 }
