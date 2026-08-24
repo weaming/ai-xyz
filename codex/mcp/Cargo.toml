@@ -1,0 +1,26 @@
+[package]
+name = "codex-mcp"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[[bin]]
+name = "codex-mcp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+codex-apply-patch = { path = "../apply-patch" }
+codex-utils-absolute-path = { path = "../copy/utils/absolute-path" }
+codex-utils-path-uri = { path = "../copy/utils/path-uri" }
+rmcp = { version = "=3.1.4", default-features = false, features = [
+    "macros",
+    "schemars",
+    "server",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-std", "macros", "net", "rt"] }

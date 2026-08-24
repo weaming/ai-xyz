@@ -1,0 +1,42 @@
+[workspace]
+members = [
+    "utils/absolute-path",
+    "utils/path-uri",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+base64 = "0.22.1"
+codex-utils-absolute-path = { path = "utils/absolute-path" }
+dirs = "6"
+dunce = "1.0.4"
+pretty_assertions = "1.4.1"
+schemars = "0.8.22"
+serde = { version = "1", features = ["rc"] }
+serde_json = "1"
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+ts-rs = "11"
+url = "2"
+urlencoding = "2.1"
+
+[workspace.lints]
+rust = {}
+
+[workspace.lints.clippy]
+await_holding_invalid_type = "deny"
+await_holding_lock = "deny"
+disallowed_methods = "deny"
+expect_used = "deny"
+identity_op = "deny"
+manual_clamp = "deny"
+manual_filter = "deny"
+manual_find = "deny"
+manual_flatten = "deny"
+manual_map = "deny"
+manual_memcpy = "deny"

@@ -1,0 +1,19 @@
+[package]
+name = "codex-apply-patch"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+name = "codex_apply_patch"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+anyhow = "1"
+codex-utils-absolute-path = { path = "../copy/utils/absolute-path" }
+codex-utils-path-uri = { path = "../copy/utils/path-uri" }
+similar = "2.7.0"
+thiserror = "2.0.17"
+tree-sitter = "0.25.10"
+tree-sitter-bash = "0.25"
