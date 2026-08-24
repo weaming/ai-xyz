@@ -51,7 +51,7 @@ func parseFlags() (*options, error) {
 	flag.StringVar(&opts.codexDatabase, "codex-db", defaultCodexDatabase, "Codex 历史数据库")
 	flag.StringVar(&opts.claudeDir, "claude-dir", defaultClaudeDir, "Claude 数据目录")
 	flag.StringVar(&opts.qoderDir, "qoder-dir", defaultQoderDir, "Qoder 数据目录")
-	flag.StringVar(&opts.qoderAppDir, "qoder-app-dir", defaultQoderAppDir, "新版 Qoder 应用会话目录")
+	flag.StringVar(&opts.qoderAppDir, "qoder-app-dir", defaultQoderAppDir, "Qoder 应用会话目录")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
 		fmt.Fprintf(out, "解析 Codex、Claude、Qoder 或新版 Qoder 应用会话历史，输出输入、工具调用和最终输出。\n")
