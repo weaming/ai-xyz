@@ -150,7 +150,7 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 	if useColor {
 		sessionID = blue + sessionID + reset
 	}
-	fmt.Printf("[%s] UUID %s\n", session.Source, sessionID)
+	fmt.Printf("[%s] ID %s\n", session.Source, sessionID)
 	printSessionTime(session, loc)
 	if session.WorkingDir != "" {
 		fmt.Printf("CWD: %s\n", session.WorkingDir)
@@ -216,7 +216,7 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 	if useColor {
 		sessionID = blue + sessionID + reset
 	}
-	fmt.Printf("[%s] UUID %s\n", session.Source, sessionID)
+	fmt.Printf("[%s] ID %s\n", session.Source, sessionID)
 	printSessionTime(session, loc)
 	if session.WorkingDir != "" {
 		fmt.Printf("CWD: %s\n", session.WorkingDir)
