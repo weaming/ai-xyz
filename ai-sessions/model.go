@@ -119,7 +119,7 @@ type sourceConfig struct {
 var sourceConfigs = map[string]sourceConfig{
 	sourceClaude:   {findPlan: findClaudePlanBySlug},
 	sourceCodex:    {hasArchive: true},
-	sourceQoder:    {findPlan: findQoderPlanByTime},
+	sourceQoder:    {findPlan: findQoderPlanBySlug},
 	sourceQoderApp: {},
 }
 

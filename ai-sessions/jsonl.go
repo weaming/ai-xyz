@@ -187,6 +187,18 @@ func parseJSONLSession(source, sessionPath string, loc *time.Location, allowEmpt
 				session.PlanSlug = slug
 			}
 		}
+		if session.PlanSlug == "" {
+			if attachment, ok := item["attachment"].(map[string]any); ok {
+				if planPath, ok := attachment["planFilePath"].(string); ok && planPath != "" {
+					session.PlanSlug = strings.TrimSuffix(filepath.Base(planPath), ".md")
+				}
+			}
+		}
+		if session.PlanSlug == "" {
+			if planPath, ok := item["planFilePath"].(string); ok && planPath != "" {
+				session.PlanSlug = strings.TrimSuffix(filepath.Base(planPath), ".md")
+			}
+		}
 
 		itemType, _ := item["type"].(string)
 		var message map[string]any
