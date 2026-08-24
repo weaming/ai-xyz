@@ -194,7 +194,7 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 		}
 		printLabeledText(questionLabel, turn.Question, true, "")
 		if showThinking {
-			printThinking(turn, useColor)
+			printThinking(index+1, turn, useColor)
 		}
 		if len(turn.Tools) > 0 {
 			toolLabel := fmt.Sprintf("%*s", labelWidth, fmt.Sprintf("T%d:", index+1))
@@ -225,7 +225,7 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 
 	printLabeledText(fmt.Sprintf("Q%d:", turnNumber), turn.Question, true, "")
 	if showThinking {
-		printThinking(turn, useColor)
+		printThinking(turnNumber, turn, useColor)
 	}
 	inputLabel, outputLabel := "  Input", "  Output"
 	if useColor {
@@ -248,15 +248,15 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 	printLabeledText(fmt.Sprintf("A%d:", turnNumber), turn.Answer, false, "")
 }
 
-// printThinking 输出一轮会话的中间思考过程。
-func printThinking(turn ConversationTurn, useColor bool) {
+// printThinking 输出指定序号一轮会话的中间思考过程。
+func printThinking(number int, turn ConversationTurn, useColor bool) {
 	content := strings.TrimSpace(turn.Thinking)
 	if content == "" {
 		return
 	}
 
 	printSeparator(useColor, false)
-	label := "  Think"
+	label := fmt.Sprintf("  Think%d", number)
 	if useColor {
 		label = yellow + label + reset
 	}
