@@ -225,6 +225,9 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 	if planPath := findPlanMD(session); planPath != "" {
 		fmt.Printf("Plan: %s\n", planPath)
 	}
+	if len(session.Models) > 0 {
+		fmt.Printf("Models: %s\n", strings.Join(session.Models, ", "))
+	}
 	printTokenUsage(session)
 	printTurnTiming(session, fullSummary)
 	printTurnStarts(session)

@@ -129,6 +129,7 @@ type SessionData struct {
 	WorkingDir      string
 	CompactSummary  string
 	PlanSlug        string
+	Models          []string
 	TokenStats      TokenUsage
 	RequestHitRates []float64
 }
@@ -265,6 +266,21 @@ func (s *SessionData) addTokenUsage(input, output, cacheHit, cacheMiss int) {
 		rate := float64(cacheHit) / float64(total) * 100
 		s.RequestHitRates = append(s.RequestHitRates, rate)
 	}
+}
+
+// addModel 按首次出现顺序记录会话用过的模型，重复的忽略；
+// 尖括号包裹的占位值（如 Claude 的 <synthetic>）不是真实模型，跳过。
+func (s *SessionData) addModel(model string) {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.HasPrefix(model, "<") && strings.HasSuffix(model, ">") {
+		return
+	}
+	for _, existing := range s.Models {
+		if existing == model {
+			return
+		}
+	}
+	s.Models = append(s.Models, model)
 }
 
 // TurnDurationSummary 汇总各轮用时整体情况。

@@ -47,11 +47,16 @@ ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
 [codex] ID 019fe038-0d31-7931-a890-ce3506e88612
 Time: 2026-08-08 15:14 ~ 2026-08-09 00:06 (TZ=Asia/Hong_Kong) [Archived=YES]
 CWD: /Users/garden/src/google-news
+Models: gpt-5.6-luna
 Tokens: 214.9M 输入 | 825.3k 输出 | 缓存: 211.4M 命中 (98.40%)
 Timing: 12 轮 | 总耗时 22m10s | avg 1m50s | median 1m58s | max 3m47s (Q4) | min <1s (Q7)
 ```
 
 归档标记仅 Codex 提供，其余来源的时间行不带 `[Archived=]`。
+
+`Models` 按首次出现顺序列出会话用过的模型（去重）：Claude/Qoder CLI 取
+助手消息的 `model` 字段，Codex 取 rollout 中 `turn_context` 的 `model`；
+Qoder App 数据中没有模型信息，不输出该行。
 
 轮次用时按每轮内首末活动时间戳计算，两轮之间用户的空闲等待不计入；
 仅有一轮时只输出总耗时。完整视图（单会话/-q 匹配）额外列出每轮用时

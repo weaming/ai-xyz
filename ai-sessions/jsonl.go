@@ -255,6 +255,9 @@ func parseJSONLSession(source, sessionPath string, loc *time.Location, allowEmpt
 			}
 		}
 		if itemType == "assistant" || messageRole == "assistant" {
+			if model, ok := message["model"].(string); ok {
+				session.addModel(model)
+			}
 			if strings.TrimSpace(content) != "" {
 				currentTurn.Answer = strings.TrimSpace(content)
 			}

@@ -114,12 +114,15 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 		return nil, newHistoryError("查询 Codex 会话内容失败：%v", err)
 	}
 	defer rows.Close()
-	tokenStats, requestHitRates, err := parseCodexTokenUsage(resolvedID, databasePath)
+	tokenStats, requestHitRates, models, err := parseCodexTokenUsage(resolvedID, databasePath)
 	if err != nil {
 		return nil, err
 	}
 	session.TokenStats = tokenStats
 	session.RequestHitRates = requestHitRates
+	for _, model := range models {
+		session.addModel(model)
+	}
 
 	var turnOrder []string
 	turnsByID := make(map[string]*ConversationTurn)
@@ -287,21 +290,22 @@ func lookupCodexThreadMeta(sessionID, databasePath string) (codexThreadMeta, boo
 	return codexThreadMeta{}, false
 }
 
-// parseCodexTokenUsage 解析 Codex rollout 日志中的累计 Token 和单次命中率。
-func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64, error) {
+// parseCodexTokenUsage 解析 Codex rollout 日志中的累计 Token、单次命中率与使用过的模型。
+func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64, []string, error) {
 	rolloutPath, err := findCodexRolloutPath(sessionID, databasePath)
 	if err != nil || rolloutPath == "" {
-		return TokenUsage{}, nil, err
+		return TokenUsage{}, nil, nil, err
 	}
 
 	file, err := os.Open(rolloutPath)
 	if err != nil {
-		return TokenUsage{}, nil, newHistoryError("读取 Codex rollout 失败：%s：%v", rolloutPath, err)
+		return TokenUsage{}, nil, nil, newHistoryError("读取 Codex rollout 失败：%s：%v", rolloutPath, err)
 	}
 	defer file.Close()
 
 	var tokenStats TokenUsage
 	var requestHitRates []float64
+	var models []string
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024)
 	for scanner.Scan() {
@@ -310,7 +314,16 @@ func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64
 			continue
 		}
 		payload, ok := item["payload"].(map[string]any)
-		if !ok || payload["type"] != "token_count" {
+		if !ok {
+			continue
+		}
+		if item["type"] == "turn_context" {
+			if model, ok := payload["model"].(string); ok && strings.TrimSpace(model) != "" {
+				models = appendUniqueString(models, model)
+			}
+			continue
+		}
+		if payload["type"] != "token_count" {
 			continue
 		}
 
@@ -326,9 +339,19 @@ func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return TokenUsage{}, nil, newHistoryError("读取 Codex rollout 失败：%s：%v", rolloutPath, err)
+		return TokenUsage{}, nil, nil, newHistoryError("读取 Codex rollout 失败：%s：%v", rolloutPath, err)
 	}
-	return tokenStats, requestHitRates, nil
+	return tokenStats, requestHitRates, models, nil
+}
+
+// appendUniqueString 按首次出现顺序追加不重复的字符串。
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 // findCodexRolloutPath 查找与 Codex 会话对应的 rollout 日志，依次搜索 sessions 与 archived_sessions 目录。

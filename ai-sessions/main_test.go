@@ -136,6 +136,28 @@ func TestMatchesQuery(t *testing.T) {
 	}
 }
 
+func TestSessionModels(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "ses_models.jsonl")
+	lines := []string{
+		`{"type":"user","timestamp":"2026-07-24T16:00:00+08:00","message":{"role":"user","content":"问题"}}`,
+		`{"type":"assistant","timestamp":"2026-07-24T16:01:00+08:00","message":{"role":"assistant","model":"model-a","content":[{"type":"text","text":"回答一"}]}}`,
+		`{"type":"assistant","timestamp":"2026-07-24T16:02:00+08:00","message":{"role":"assistant","model":"model-a","content":[{"type":"text","text":"补充"}]}}`,
+		`{"type":"assistant","timestamp":"2026-07-24T16:03:00+08:00","message":{"role":"assistant","model":"model-b","content":[{"type":"text","text":"回答二"}]}}`,
+	}
+	if err := os.WriteFile(sessionPath, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := parseJSONLSession("claude", sessionPath, testLocation, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(session.Models, ","); got != "model-a,model-b" {
+		t.Fatalf("Models = %v, 期望按首次出现顺序去重 [model-a model-b]", session.Models)
+	}
+}
+
 func TestParseJSONLSession(t *testing.T) {
 	dir := t.TempDir()
 	sessionPath := filepath.Join(dir, "ses_test123.jsonl")
