@@ -48,9 +48,15 @@ ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
 Time: 2026-08-08 15:14 ~ 2026-08-09 00:06 (TZ=Asia/Hong_Kong) [Archived=YES]
 CWD: /Users/garden/src/google-news
 Tokens: 214.9M 输入 | 825.3k 输出 | 缓存: 211.4M 命中 (98.40%)
+Timing: 12 轮 | 总耗时 22m10s | avg 1m50s | median 1m58s | max 3m47s (Q4) | min <1s (Q7)
 ```
 
 归档标记仅 Codex 提供，其余来源的时间行不带 `[Archived=]`。
+
+轮次用时按每轮内首末活动时间戳计算，两轮之间用户的空闲等待不计入；
+仅有一轮时只输出总耗时。完整视图（单会话/-q 匹配）额外列出每轮用时
+`Durations: Q1 1m05s | Q2 30s | ...`，`-t` 详情视图输出该轮的 `Duration`。
+Qoder App 会话无内嵌时间戳，不提供用时统计。
 
 ## 数据来源
 

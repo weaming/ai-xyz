@@ -176,7 +176,8 @@ func parseJSONLSession(source, sessionPath string, loc *time.Location, allowEmpt
 			continue
 		}
 
-		session.addActivityTimestamp(item["timestamp"], loc)
+		activityTime := parseTimestamp(item["timestamp"], loc)
+		session.addActivityTime(activityTime)
 		if session.WorkingDir == "" {
 			if cwd, ok := item["cwd"].(string); ok && cwd != "" {
 				session.WorkingDir = cwd
@@ -220,6 +221,7 @@ func parseJSONLSession(source, sessionPath string, loc *time.Location, allowEmpt
 					turns = append(turns, currentTurn)
 				}
 				currentTurn = &ConversationTurn{Question: strings.TrimSpace(content)}
+				currentTurn.addTimestamp(activityTime)
 				continue
 			}
 		}
@@ -227,6 +229,7 @@ func parseJSONLSession(source, sessionPath string, loc *time.Location, allowEmpt
 		if currentTurn == nil {
 			currentTurn = &ConversationTurn{}
 		}
+		currentTurn.addTimestamp(activityTime)
 		if captureThinking {
 			currentTurn.appendThinking(getJSONLThinking(message, item))
 		}

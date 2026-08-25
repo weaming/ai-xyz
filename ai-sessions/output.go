@@ -106,6 +106,24 @@ func formatPercent(value float64) string {
 	return fmt.Sprintf("%.2f%%", value)
 }
 
+// formatDuration 将用时压缩成紧凑可读形式，不足 1 秒显示 <1s。
+func formatDuration(duration time.Duration) string {
+	duration = duration.Truncate(time.Second)
+	if duration < time.Second {
+		return "<1s"
+	}
+	hours := int(duration.Hours())
+	minutes := int(duration.Minutes()) % 60
+	seconds := int(duration.Seconds()) % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh%02dm", hours, minutes)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm%02ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
 // printTokenUsage 输出 token 使用量和缓存命中率。
 func printTokenUsage(session *SessionData) {
 	stats := &session.TokenStats
@@ -144,6 +162,34 @@ func printTokenUsage(session *SessionData) {
 	fmt.Println()
 }
 
+// printTurnTiming 输出各轮用时整体统计；完整模式下额外列出每轮用时。
+// 只有一轮时仅输出总耗时，不输出均值等统计。
+func printTurnTiming(session *SessionData, fullSummary bool) {
+	summary, ok := session.TurnDurationStats()
+	if !ok {
+		return
+	}
+	if summary.Count == 1 {
+		fmt.Printf("Timing: 1 轮 | 总耗时 %s\n", formatDuration(summary.Total))
+		return
+	}
+	fmt.Printf("Timing: %d 轮 | 总耗时 %s | avg %s | median %s | max %s (Q%d) | min %s (Q%d)\n",
+		summary.Count, formatDuration(summary.Total), formatDuration(summary.Avg), formatDuration(summary.Median),
+		formatDuration(summary.Max), summary.MaxTurn, formatDuration(summary.Min), summary.MinTurn)
+	if !fullSummary {
+		return
+	}
+	var parts []string
+	for index, turn := range session.Turns {
+		if duration := turn.Duration(); duration != nil {
+			parts = append(parts, fmt.Sprintf("Q%d %s", index+1, formatDuration(*duration)))
+		}
+	}
+	if len(parts) > 0 {
+		fmt.Printf("Durations: %s\n", strings.Join(parts, " | "))
+	}
+}
+
 // printSession 以紧凑格式输出会话正文。
 func printSession(session *SessionData, loc *time.Location, useColor bool, fullSummary, showThinking bool) {
 	sessionID := session.SessionID
@@ -159,6 +205,7 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 		fmt.Printf("Plan: %s\n", planPath)
 	}
 	printTokenUsage(session)
+	printTurnTiming(session, fullSummary)
 	fmt.Println()
 
 	if len(session.Turns) == 0 {
@@ -220,6 +267,10 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 	printSessionTime(session, loc)
 	if session.WorkingDir != "" {
 		fmt.Printf("CWD: %s\n", session.WorkingDir)
+	}
+	if duration := turn.Duration(); duration != nil {
+		fmt.Printf("Duration: %s (%s ~ %s)\n",
+			formatDuration(*duration), turn.StartedAt.Format("15:04:05"), turn.EndedAt.Format("15:04:05"))
 	}
 	fmt.Println()
 

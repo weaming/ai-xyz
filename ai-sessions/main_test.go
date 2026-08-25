@@ -437,3 +437,73 @@ func TestGetLastAnswerIndex(t *testing.T) {
 		t.Fatalf("无回答时 getLastAnswerIndex() = %d, 期望 1", got)
 	}
 }
+
+func TestTurnDurationStats(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "ses_duration.jsonl")
+	// 第一轮 10:00:00~10:01:30（90s）；用户隔 10 分钟才提第二问，
+	// 这段空闲不应计入任何一轮；第二轮 10:11:30~10:11:50（20s）。
+	lines := []string{
+		`{"type":"user","timestamp":"2026-07-24T10:00:00+08:00","message":{"role":"user","content":"问题一"}}`,
+		`{"type":"assistant","timestamp":"2026-07-24T10:01:30+08:00","message":{"role":"assistant","content":"回答一"}}`,
+		`{"type":"user","timestamp":"2026-07-24T10:11:30+08:00","message":{"role":"user","content":"问题二"}}`,
+		`{"type":"assistant","timestamp":"2026-07-24T10:11:50+08:00","message":{"role":"assistant","content":"回答二"}}`,
+	}
+	if err := os.WriteFile(sessionPath, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := parseJSONLSession(sourceClaude, sessionPath, testLocation, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(session.Turns) != 2 {
+		t.Fatalf("Turns 数 = %d, 期望 2", len(session.Turns))
+	}
+	first, second := session.Turns[0].Duration(), session.Turns[1].Duration()
+	if first == nil || *first != 90*time.Second {
+		t.Fatalf("第一轮用时 = %v, 期望 90s（轮间空闲不应计入）", first)
+	}
+	if second == nil || *second != 20*time.Second {
+		t.Fatalf("第二轮用时 = %v, 期望 20s", second)
+	}
+
+	summary, ok := session.TurnDurationStats()
+	if !ok {
+		t.Fatal("应能统计出轮次用时")
+	}
+	if summary.Count != 2 || summary.Total != 110*time.Second || summary.Avg != 55*time.Second {
+		t.Fatalf("Count/Total/Avg = %d/%v/%v", summary.Count, summary.Total, summary.Avg)
+	}
+	if summary.Min != 20*time.Second || summary.MinTurn != 2 {
+		t.Fatalf("Min = %v (Q%d), 期望 20s (Q2)", summary.Min, summary.MinTurn)
+	}
+	if summary.Max != 90*time.Second || summary.MaxTurn != 1 {
+		t.Fatalf("Max = %v (Q%d), 期望 90s (Q1)", summary.Max, summary.MaxTurn)
+	}
+	if summary.Median != 55*time.Second {
+		t.Fatalf("Median = %v, 期望 55s", summary.Median)
+	}
+
+	// 无时间数据的会话不应输出统计。
+	if _, ok := (&SessionData{Turns: []ConversationTurn{{Question: "q"}}}).TurnDurationStats(); ok {
+		t.Fatal("无时间数据时不应有统计")
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	cases := []struct {
+		value time.Duration
+		want  string
+	}{
+		{500 * time.Millisecond, "<1s"},
+		{45 * time.Second, "45s"},
+		{125 * time.Second, "2m05s"},
+		{3725 * time.Second, "1h02m"},
+	}
+	for _, tc := range cases {
+		if got := formatDuration(tc.value); got != tc.want {
+			t.Fatalf("formatDuration(%v) = %s, 期望 %s", tc.value, got, tc.want)
+		}
+	}
+}

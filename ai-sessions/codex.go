@@ -130,7 +130,8 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 		if err := rows.Scan(&itemType, &itemJSON, &createdAtMS, &turnID); err != nil {
 			return nil, newHistoryError("读取 Codex 会话内容失败：%v", err)
 		}
-		session.addActivityTimestamp(float64(createdAtMS), loc)
+		activityTime := parseTimestamp(float64(createdAtMS), loc)
+		session.addActivityTime(activityTime)
 
 		turnKey := turnID.String
 		turn, ok := turnsByID[turnKey]
@@ -139,6 +140,7 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 			turnsByID[turnKey] = turn
 			turnOrder = append(turnOrder, turnKey)
 		}
+		turn.addTimestamp(activityTime)
 
 		var item map[string]any
 		if err := json.Unmarshal([]byte(itemJSON), &item); err != nil {

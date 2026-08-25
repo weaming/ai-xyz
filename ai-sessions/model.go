@@ -56,6 +56,8 @@ type ConversationTurn struct {
 	Tools     []string
 	ToolCalls []ToolCall
 	Answer    string
+	StartedAt *time.Time
+	EndedAt   *time.Time
 }
 
 // addTool 去重添加工具名。
@@ -88,6 +90,28 @@ func (t *ConversationTurn) appendThinking(content string) {
 func (t *ConversationTurn) appendToolCall(name, input, output string) int {
 	t.ToolCalls = append(t.ToolCalls, ToolCall{Name: name, Input: input, Output: output})
 	return len(t.ToolCalls) - 1
+}
+
+// addTimestamp 记录该轮活动时间并更新起止时间。
+func (t *ConversationTurn) addTimestamp(activityTime *time.Time) {
+	if activityTime == nil {
+		return
+	}
+	if t.StartedAt == nil || activityTime.Before(*t.StartedAt) {
+		t.StartedAt = activityTime
+	}
+	if t.EndedAt == nil || activityTime.After(*t.EndedAt) {
+		t.EndedAt = activityTime
+	}
+}
+
+// Duration 返回该轮用时，无时间数据时返回 nil。
+func (t *ConversationTurn) Duration() *time.Duration {
+	if t.StartedAt == nil || t.EndedAt == nil {
+		return nil
+	}
+	duration := t.EndedAt.Sub(*t.StartedAt)
+	return &duration
 }
 
 // SessionData 表示一个解析后的会话。
@@ -205,7 +229,11 @@ func (s *SessionData) matchesQuery(query string) bool {
 
 // addActivityTimestamp 记录时间戳并更新起止时间。
 func (s *SessionData) addActivityTimestamp(timestamp any, loc *time.Location) {
-	activityTime := parseTimestamp(timestamp, loc)
+	s.addActivityTime(parseTimestamp(timestamp, loc))
+}
+
+// addActivityTime 记录已解析的时间并更新起止时间。
+func (s *SessionData) addActivityTime(activityTime *time.Time) {
 	if activityTime == nil {
 		return
 	}
@@ -237,6 +265,51 @@ func (s *SessionData) addTokenUsage(input, output, cacheHit, cacheMiss int) {
 		rate := float64(cacheHit) / float64(total) * 100
 		s.RequestHitRates = append(s.RequestHitRates, rate)
 	}
+}
+
+// TurnDurationSummary 汇总各轮用时整体情况。
+type TurnDurationSummary struct {
+	Count            int
+	Total, Avg       time.Duration
+	Min, Max, Median time.Duration
+	MinTurn, MaxTurn int // 最短/最长轮的序号（1 基）
+}
+
+// TurnDurationStats 返回各轮用时统计，无时间数据时返回 false。
+func (s *SessionData) TurnDurationStats() (TurnDurationSummary, bool) {
+	type timedTurn struct {
+		index    int
+		duration time.Duration
+	}
+	var timed []timedTurn
+	for index, turn := range s.Turns {
+		if duration := turn.Duration(); duration != nil {
+			timed = append(timed, timedTurn{index + 1, *duration})
+		}
+	}
+	if len(timed) == 0 {
+		return TurnDurationSummary{}, false
+	}
+	sort.Slice(timed, func(i, j int) bool { return timed[i].duration < timed[j].duration })
+	var total time.Duration
+	for _, item := range timed {
+		total += item.duration
+	}
+	count := len(timed)
+	median := timed[count/2].duration
+	if count%2 == 0 {
+		median = (timed[count/2-1].duration + timed[count/2].duration) / 2
+	}
+	return TurnDurationSummary{
+		Count:   count,
+		Total:   total,
+		Avg:     total / time.Duration(count),
+		Min:     timed[0].duration,
+		Max:     timed[count-1].duration,
+		Median:  median,
+		MinTurn: timed[0].index,
+		MaxTurn: timed[count-1].index,
+	}, true
 }
 
 // getLastAnswerIndex 获取最后一个助手回答所在的轮次编号。
