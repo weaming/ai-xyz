@@ -163,18 +163,22 @@ func printTokenUsage(session *SessionData) {
 }
 
 // printTurnTiming 输出各轮用时整体统计；完整模式下额外列出每轮用时。
-// 只有一轮时仅输出总耗时，不输出均值等统计。
+// 只有一轮时仅输出总耗时，不输出均值等统计；qoder-app 的用时为近似值，标签带标注。
 func printTurnTiming(session *SessionData, fullSummary bool) {
 	summary, ok := session.TurnDurationStats()
 	if !ok {
 		return
 	}
+	label := "Timing"
+	if session.Source == sourceQoderApp {
+		label = "Timing(近似)"
+	}
 	if summary.Count == 1 {
-		fmt.Printf("Timing: 1 轮 | 总耗时 %s\n", formatDuration(summary.Total))
+		fmt.Printf("%s: 1 轮 | 总耗时 %s\n", label, formatDuration(summary.Total))
 		return
 	}
-	fmt.Printf("Timing: %d 轮 | 总耗时 %s | avg %s | median %s | max %s (Q%d) | min %s (Q%d)\n",
-		summary.Count, formatDuration(summary.Total), formatDuration(summary.Avg), formatDuration(summary.Median),
+	fmt.Printf("%s: %d 轮 | 总耗时 %s | avg %s | median %s | max %s (Q%d) | min %s (Q%d)\n",
+		label, summary.Count, formatDuration(summary.Total), formatDuration(summary.Avg), formatDuration(summary.Median),
 		formatDuration(summary.Max), summary.MaxTurn, formatDuration(summary.Min), summary.MinTurn)
 	if !fullSummary {
 		return
@@ -187,6 +191,23 @@ func printTurnTiming(session *SessionData, fullSummary bool) {
 	}
 	if len(parts) > 0 {
 		fmt.Printf("Durations: %s\n", strings.Join(parts, " | "))
+	}
+}
+
+// printTurnStarts 在没有轮次用时数据时列出每轮开始时间（Qoder App 保守模式）。
+func printTurnStarts(session *SessionData) {
+	if _, ok := session.TurnDurationStats(); ok {
+		return
+	}
+	var parts []string
+	for index, turn := range session.Turns {
+		if turn.StartedAt == nil {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("Q%d %s", index+1, turn.StartedAt.Format("01-02 15:04")))
+	}
+	if len(parts) > 0 {
+		fmt.Printf("Starts: %s\n", strings.Join(parts, " | "))
 	}
 }
 
@@ -206,6 +227,7 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 	}
 	printTokenUsage(session)
 	printTurnTiming(session, fullSummary)
+	printTurnStarts(session)
 	fmt.Println()
 
 	if len(session.Turns) == 0 {
@@ -271,6 +293,8 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 	if duration := turn.Duration(); duration != nil {
 		fmt.Printf("Duration: %s (%s ~ %s)\n",
 			formatDuration(*duration), turn.StartedAt.Format("15:04:05"), turn.EndedAt.Format("15:04:05"))
+	} else if turn.StartedAt != nil {
+		fmt.Printf("Start: %s\n", turn.StartedAt.Format("2006-01-02 15:04:05"))
 	}
 	fmt.Println()
 

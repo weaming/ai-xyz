@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // writeQoderAppFixture 在临时目录中创建 <项目>/conversation-history/<task>/<task>.jsonl。
@@ -53,7 +54,7 @@ func TestParseQoderAppSession(t *testing.T) {
 	}
 	sessionPath := writeQoderAppFixture(t, "my-project", "task-ab", lines)
 
-	session, err := parseQoderAppSession(sessionPath, testLocation, false, false)
+	session, err := parseQoderAppSession(sessionPath, testLocation, false, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestParseQoderAppSession(t *testing.T) {
 	}
 
 	// 启用思考提取时，中间助手消息应进入 Thinking
-	session, err = parseQoderAppSession(sessionPath, testLocation, false, true)
+	session, err = parseQoderAppSession(sessionPath, testLocation, false, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,5 +125,74 @@ func TestResolveQoderAppSession(t *testing.T) {
 
 	if _, err := resolveQoderAppSession("task-none", rootDirectory); err == nil {
 		t.Fatal("不存在的会话应报错")
+	}
+}
+
+func TestApplyQoderAppMetadata(t *testing.T) {
+	createMs := time.Date(2026, 8, 25, 5, 49, 59, 0, testLocation).UnixMilli()
+	endMs := time.Date(2026, 8, 25, 6, 10, 0, 0, testLocation).UnixMilli()
+	queryOne := time.Date(2026, 8, 25, 5, 50, 10, 0, testLocation)
+	queryTwo := time.Date(2026, 8, 25, 6, 0, 0, 0, testLocation)
+	meta := &qoderAppMetadata{
+		tasks: map[string]qoderAppTaskTiming{
+			"task-ab12cd34ef56": {createTimeMs: createMs, endTimeMs: endMs},
+		},
+		queryTimes: map[string][]qoderAppQuery{
+			"task-ab12cd34ef56": {
+				{title: "问题一", at: queryOne},
+				{title: "问题二", at: queryTwo},
+			},
+		},
+	}
+
+	// 文本匹配：起止用快照，匹配上的轮标注开始时间，并按相邻轮次近似推算用时。
+	session := &SessionData{SessionID: "my-project/task-ab", Turns: []ConversationTurn{{Question: "问题一"}, {Question: "问题二"}}}
+	applyQoderAppMetadata(session, filepath.Join(t.TempDir(), "x.jsonl"), testLocation, meta)
+	if session.StartedAt == nil || session.StartedAt.UnixMilli() != createMs {
+		t.Fatalf("StartedAt = %v, 期望快照创建时间", session.StartedAt)
+	}
+	if session.EndedAt == nil || session.EndedAt.UnixMilli() != endMs {
+		t.Fatalf("EndedAt = %v, 期望快照结束时间", session.EndedAt)
+	}
+	if session.Turns[0].StartedAt == nil || !session.Turns[0].StartedAt.Equal(queryOne) {
+		t.Fatalf("第一轮开始 = %v", session.Turns[0].StartedAt)
+	}
+	if session.Turns[1].StartedAt == nil || !session.Turns[1].StartedAt.Equal(queryTwo) {
+		t.Fatalf("第二轮开始 = %v", session.Turns[1].StartedAt)
+	}
+	if duration := session.Turns[0].Duration(); duration == nil || *duration != queryTwo.Sub(queryOne) {
+		t.Fatalf("第一轮用时 = %v, 期望下一轮开始 − 本轮开始", duration)
+	}
+	if duration := session.Turns[1].Duration(); duration == nil || *duration != time.UnixMilli(endMs).Sub(queryTwo) {
+		t.Fatalf("第二轮用时 = %v, 期望会话结束 − 本轮开始", duration)
+	}
+
+	// 提问历史缺失的轮次不标注也不用时，相邻匹配轮的用时跨过它。
+	session = &SessionData{SessionID: "my-project/task-ab", Turns: []ConversationTurn{
+		{Question: "问题一"}, {Question: "临时追问"}, {Question: "问题二"},
+	}}
+	applyQoderAppMetadata(session, filepath.Join(t.TempDir(), "x.jsonl"), testLocation, meta)
+	if session.Turns[0].StartedAt == nil || session.Turns[2].StartedAt == nil {
+		t.Fatal("文本匹配的轮次应标注开始时间")
+	}
+	if session.Turns[1].StartedAt != nil || session.Turns[1].Duration() != nil {
+		t.Fatal("未匹配的轮次不应标注开始时间或用时")
+	}
+	if duration := session.Turns[0].Duration(); duration == nil || *duration != queryTwo.Sub(queryOne) {
+		t.Fatalf("跨未匹配轮的用时 = %v", duration)
+	}
+
+	// 短 ID 无法唯一定位完整任务：退回文件时间。
+	hostileMeta := &qoderAppMetadata{
+		tasks: map[string]qoderAppTaskTiming{
+			"task-ab11": {createTimeMs: createMs},
+			"task-ab22": {createTimeMs: createMs},
+		},
+		queryTimes: map[string][]qoderAppQuery{},
+	}
+	session = &SessionData{SessionID: "my-project/task-ab", Turns: []ConversationTurn{{Question: "q1"}}}
+	applyQoderAppMetadata(session, filepath.Join(t.TempDir(), "x.jsonl"), testLocation, hostileMeta)
+	if session.Turns[0].StartedAt != nil || session.Turns[0].Duration() != nil {
+		t.Fatal("短 ID 不唯一时不应标注轮次开始时间或用时")
 	}
 }
