@@ -25,6 +25,8 @@ type options struct {
 	turn          int
 	think         bool
 	plan          bool
+	stat          bool
+	format        string
 	archived      bool
 	source        string
 	dateText      string
@@ -44,6 +46,8 @@ func parseFlags() (*options, error) {
 	flag.IntVar(&opts.turn, "t", 0, "")
 	flag.BoolVar(&opts.think, "think", false, "配合 --session 使用，输出会话中的中间思考过程")
 	flag.BoolVar(&opts.plan, "plan", false, "只显示关联了 plan 文件的会话")
+	flag.BoolVar(&opts.stat, "stat", false, "只输出会话元信息，不输出问答内容")
+	flag.StringVar(&opts.format, "format", formatTable, "指定 -stat 的输出格式：table/csv")
 	flag.BoolVar(&opts.archived, "archived", false, "列出 Codex 会话时包含已归档会话")
 	flag.StringVar(&opts.source, "source", sourceAll,
 		fmt.Sprintf("会话来源：%s/%s，all 表示全部", strings.Join(knownSources(), "/"), sourceAll))
@@ -119,6 +123,15 @@ func (o *options) validate() error {
 	if o.turn > 0 && o.query != "" {
 		return errors.New("不能同时使用 --turn 和 --query")
 	}
+	if o.turn > 0 && o.stat {
+		return errors.New("不能同时使用 --turn 和 --stat")
+	}
+	if o.format != "" && o.format != formatTable && o.format != formatCSV {
+		return fmt.Errorf("无效的 --format 值：%s（可选：%s/%s）", o.format, formatTable, formatCSV)
+	}
+	if o.format == formatCSV && !o.stat {
+		return errors.New("--format 必须配合 --stat 使用")
+	}
 	if o.think && o.session == "" {
 		return errors.New("--think 必须配合 --session 使用")
 	}
@@ -182,6 +195,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误：会话不匹配查询：%s\n", opts.query)
 			os.Exit(1)
 		}
+		if opts.stat {
+			if err := printSessionStats([]*SessionData{session}, loc, opts.format); err != nil {
+				fmt.Fprintf(os.Stderr, "错误：%v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
 		printSession(session, loc, useTerminalColor(), true, opts.think)
 		return
 	}
@@ -198,9 +218,29 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if opts.query != "" {
+	if opts.query != "" && !opts.stat {
 		printMatchingSessions(sessions, opts.query, loc, targetDate)
-	} else {
-		printSessionIndex(sessions, loc)
+		return
 	}
+	if opts.query != "" {
+		var matched []*SessionData
+		for _, session := range sessions {
+			if session.matchesQuery(opts.query) {
+				matched = append(matched, session)
+			}
+		}
+		if len(matched) == 0 {
+			fmt.Fprintf(os.Stderr, "错误：没有找到请求或最终响应包含\"%s\"的会话\n", opts.query)
+			os.Exit(1)
+		}
+		sessions = matched
+	}
+	if opts.stat {
+		if err := printSessionStats(sessions, loc, opts.format); err != nil {
+			fmt.Fprintf(os.Stderr, "错误：%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	printSessionIndex(sessions, loc)
 }

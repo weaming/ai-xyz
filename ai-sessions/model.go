@@ -129,6 +129,7 @@ type SessionData struct {
 	WorkingDir      string
 	CompactSummary  string
 	PlanSlug        string
+	Plan            string
 	Models          []string
 	TokenStats      TokenUsage
 	RequestHitRates []float64

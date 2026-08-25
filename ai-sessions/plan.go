@@ -5,13 +5,17 @@ import (
 	"path/filepath"
 )
 
-// findPlanMD 按来源配置查找关联的 plan 文件。
+// findPlanMD 按来源配置查找关联的 plan 文件，结果缓存在 session.Plan。
 func findPlanMD(session *SessionData) string {
+	if session.Plan != "" {
+		return session.Plan
+	}
 	find := getSourceConfig(session.Source).findPlan
 	if find == nil {
 		return ""
 	}
-	return find(session)
+	session.Plan = find(session)
+	return session.Plan
 }
 
 // findClaudePlanBySlug 根据 slug 查找 Claude plan 文件。

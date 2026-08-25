@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/mattn/go-runewidth v0.0.16
+	github.com/weaming/printable/go-column v0.0.0-20260823073843-2b9c5e5b83d2
 	golang.org/x/term v0.15.0
 	modernc.org/sqlite v1.34.5
 )

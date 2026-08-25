@@ -431,6 +431,11 @@ func TestOptionsValidate(t *testing.T) {
 		{"查询与会话", options{source: "all", session: "abc", query: "x"}, false},
 		{"思考无会话", options{source: "all", think: true}, true},
 		{"思考与会话", options{source: "all", session: "abc", think: true}, false},
+		{"问题序号与统计冲突", options{source: "all", session: "abc", turn: 2, stat: true}, true},
+		{"统计表格", options{source: "all", stat: true}, false},
+		{"统计CSV", options{source: "all", stat: true, format: "csv"}, false},
+		{"CSV无统计", options{source: "all", format: "csv"}, true},
+		{"无效格式", options{source: "all", stat: true, format: "json"}, true},
 	}
 	for _, tc := range cases {
 		err := tc.opts.validate()
