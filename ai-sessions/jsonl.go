@@ -20,7 +20,6 @@ func sessionCandidates(sessionID string, searchDirectories []string, excludeSuba
 	}
 
 	var candidates []string
-	pattern := sessionID + ".jsonl"
 	for _, searchDirectory := range searchDirectories {
 		if _, err := os.Stat(searchDirectory); err != nil {
 			continue
@@ -35,7 +34,7 @@ func sessionCandidates(sessionID string, searchDirectories []string, excludeSuba
 				}
 				return nil
 			}
-			if entry.Name() == pattern && !strings.HasSuffix(entry.Name(), ".wakatime") {
+			if strings.HasPrefix(entry.Name(), sessionID) && strings.HasSuffix(entry.Name(), ".jsonl") {
 				candidates = append(candidates, path)
 			}
 			return nil
