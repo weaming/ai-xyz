@@ -20,6 +20,8 @@ ai-sessions -plan              # 只看关联了 plan 文件的会话
 ai-sessions --source claude    # 只看 claude 来源
 ai-sessions -i 019abc -t 2     # 指定会话第 2 问完整详情：问题、工具调用输入输出和回答
 ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
+ai-sessions -i 019abc --transcript             # 导出纯净 user/assistant 对话全文（JSONL，喂给 AI）
+ai-sessions -i 019abc --transcript --format md # 或者 Markdown 分节格式
 ```
 
 选项：
@@ -29,10 +31,12 @@ ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
 -q, --query 文本    按请求或最终响应文本过滤
 -t, --turn 序号     配合 --session，输出指定问题的完整详情
 --think             配合 --session，输出中间思考过程
+--transcript        配合 --session，只输出纯净的 user/assistant 对话全文（不含工具调用等）
 --plan              只显示关联了 plan 文件的会话
 --archived          列出 Codex 会话时包含已归档会话
 -s, --source 来源   all/codex/claude/qoder/qoder-app，默认 all
 -d, --date 日期     YYYY-MM-DD、yesterday 或 all，按 TZ 时区过滤，默认今天
+-f, --format 格式   -stat 用 table/csv；-transcript 用 jsonl（默认）/md
 --codex-db 路径     Codex 历史数据库，默认 ~/.codex/thread_history_1.sqlite
 --claude-dir 路径   Claude 数据目录，默认 ~/.claude
 --qoder-dir 路径    Qoder 数据目录，默认 ~/.qoder-cn
@@ -45,12 +49,30 @@ ai-sessions -i 019abc --think  # 输出该会话的中间思考过程
 
 ```text
 [codex] ID 019fe038-0d31-7931-a890-ce3506e88612
+Path: ~/.codex/archived_sessions/rollout-2026-08-08T15-13-17-019fe038-0d31-7931-a890-ce3506e88612.jsonl
 Time: 2026-08-08 15:14 ~ 2026-08-09 00:06 (TZ=Asia/Hong_Kong) [Archived=YES]
 CWD: /Users/garden/src/google-news
 Models: gpt-5.6-luna
 Tokens: 214.9M 输入 | 825.3k 输出 | 缓存: 211.4M 命中 (98.40%)
 Timing: 12 轮 | 总耗时 22m10s | avg 1m50s | median 1m58s | max 3m47s (Q4) | min <1s (Q7)
 ```
+
+`Path` 行输出会话对应的源文件路径（相对主目录缩写为 `~`）：
+Claude/Qoder/Qoder App 为 JSONL 文件，Codex 为完整对话历史的 rollout JSONL
+（`~/.codex/sessions/` 或 `~/.codex/archived_sessions/`，缺失时回退历史库路径）。
+
+## 导出对话（--transcript）
+
+配合 `-i` 从会话源文件提取完整 user/assistant 文本消息序列，剔除工具调用、
+工具结果、思考过程、系统注入的 AGENTS.md/环境上下文等一切非对话内容，
+适合直接把会话历史喂给另一个 AI 了解上下文：
+
+```sh
+ai-sessions -i 019abc --transcript              # 每行 {"role":"user"|"assistant","content":"..."}
+ai-sessions -i 019abc --transcript --format md  # ## user / ## assistant 分节
+```
+
+输出顺序与原始消息一致（含被中断的 `[Request interrupted by user]` 占位）。
 
 归档标记仅 Codex 提供，其余来源的时间行不带 `[Archived=]`。
 

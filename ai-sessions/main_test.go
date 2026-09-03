@@ -436,6 +436,13 @@ func TestOptionsValidate(t *testing.T) {
 		{"统计CSV", options{source: "all", stat: true, format: "csv"}, false},
 		{"CSV无统计", options{source: "all", format: "csv"}, true},
 		{"无效格式", options{source: "all", stat: true, format: "json"}, true},
+		{"转写无会话", options{source: "all", transcript: true}, true},
+		{"转写与会话", options{source: "all", session: "abc", transcript: true}, false},
+		{"转写JSONL", options{source: "all", session: "abc", transcript: true, format: "jsonl"}, false},
+		{"转写Markdown", options{source: "all", session: "abc", transcript: true, format: "md"}, false},
+		{"转写与统计冲突", options{source: "all", session: "abc", transcript: true, stat: true}, true},
+		{"转写与轮次冲突", options{source: "all", session: "abc", transcript: true, turn: 2}, true},
+		{"格式无目标", options{source: "all", format: "md"}, true},
 	}
 	for _, tc := range cases {
 		err := tc.opts.validate()

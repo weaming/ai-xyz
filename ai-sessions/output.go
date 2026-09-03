@@ -35,6 +35,21 @@ func getTerminalWidth() int {
 	return 80
 }
 
+// shortHomePath 将用户主目录前缀缩写为 ~，便于终端显示。
+func shortHomePath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+string(os.PathSeparator)) {
+		return "~" + path[len(home):]
+	}
+	return path
+}
+
 // printLabeledText 以紧凑标签格式输出多行文本。
 func printLabeledText(label, content string, indentContinuation bool, separator string) {
 	if strings.TrimSpace(content) == "" {
@@ -218,6 +233,9 @@ func printSession(session *SessionData, loc *time.Location, useColor bool, fullS
 		sessionID = blue + sessionID + reset
 	}
 	fmt.Printf("[%s] ID %s\n", session.Source, sessionID)
+	if session.Path != "" {
+		fmt.Printf("Path: %s\n", shortHomePath(session.Path))
+	}
 	printSessionTime(session, loc)
 	if session.WorkingDir != "" {
 		fmt.Printf("CWD: %s\n", session.WorkingDir)
@@ -289,6 +307,9 @@ func printTurnDetail(session *SessionData, turnNumber int, loc *time.Location, u
 		sessionID = blue + sessionID + reset
 	}
 	fmt.Printf("[%s] ID %s\n", session.Source, sessionID)
+	if session.Path != "" {
+		fmt.Printf("Path: %s\n", shortHomePath(session.Path))
+	}
 	printSessionTime(session, loc)
 	if session.WorkingDir != "" {
 		fmt.Printf("CWD: %s\n", session.WorkingDir)

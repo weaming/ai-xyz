@@ -114,7 +114,14 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 		return nil, newHistoryError("查询 Codex 会话内容失败：%v", err)
 	}
 	defer rows.Close()
-	tokenStats, requestHitRates, models, err := parseCodexTokenUsage(resolvedID, databasePath)
+	rolloutPath, findErr := findCodexRolloutPath(resolvedID, databasePath)
+	if findErr != nil {
+		return nil, findErr
+	}
+	if rolloutPath != "" {
+		session.Path = rolloutPath
+	}
+	tokenStats, requestHitRates, models, err := parseCodexTokenUsageFromRollout(rolloutPath)
 	if err != nil {
 		return nil, err
 	}
@@ -290,11 +297,10 @@ func lookupCodexThreadMeta(sessionID, databasePath string) (codexThreadMeta, boo
 	return codexThreadMeta{}, false
 }
 
-// parseCodexTokenUsage 解析 Codex rollout 日志中的累计 Token、单次命中率与使用过的模型。
-func parseCodexTokenUsage(sessionID, databasePath string) (TokenUsage, []float64, []string, error) {
-	rolloutPath, err := findCodexRolloutPath(sessionID, databasePath)
-	if err != nil || rolloutPath == "" {
-		return TokenUsage{}, nil, nil, err
+// parseCodexTokenUsageFromRollout 解析 Codex rollout 日志中的累计 Token、单次命中率与使用过的模型。
+func parseCodexTokenUsageFromRollout(rolloutPath string) (TokenUsage, []float64, []string, error) {
+	if rolloutPath == "" {
+		return TokenUsage{}, nil, nil, nil
 	}
 
 	file, err := os.Open(rolloutPath)

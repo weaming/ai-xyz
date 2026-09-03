@@ -26,6 +26,7 @@ type options struct {
 	think         bool
 	plan          bool
 	stat          bool
+	transcript    bool
 	format        string
 	archived      bool
 	source        string
@@ -47,7 +48,9 @@ func parseFlags() (*options, error) {
 	flag.BoolVar(&opts.think, "think", false, "配合 --session 使用，输出会话中的中间思考过程")
 	flag.BoolVar(&opts.plan, "plan", false, "只显示关联了 plan 文件的会话")
 	flag.BoolVar(&opts.stat, "stat", false, "只输出会话元信息，不输出问答内容")
-	flag.StringVar(&opts.format, "format", formatTable, "指定 -stat 的输出格式：table/csv")
+	flag.BoolVar(&opts.transcript, "transcript", false, "配合 --session 使用，只输出纯净的 user/assistant 对话全文（不含工具调用等），供 AI 了解会话")
+	flag.StringVar(&opts.format, "format", formatTable, "指定 -stat（table/csv）或 -transcript（jsonl/md）的输出格式")
+	flag.StringVar(&opts.format, "f", formatTable, "")
 	flag.BoolVar(&opts.archived, "archived", false, "列出 Codex 会话时包含已归档会话")
 	flag.StringVar(&opts.source, "source", sourceAll,
 		fmt.Sprintf("会话来源：%s/%s，all 表示全部", strings.Join(knownSources(), "/"), sourceAll))
@@ -62,7 +65,7 @@ func parseFlags() (*options, error) {
 		out := flag.CommandLine.Output()
 		fmt.Fprintf(out, "解析 Codex、Claude、Qoder 或新版 Qoder 应用会话历史，输出输入、工具调用和最终输出。\n")
 		fmt.Fprintf(out, "示例：ai-sessions -q tantivy；ai-sessions -i 019... -t 2；ai-sessions --source claude\n")
-		aliases := map[string]string{"session": "i", "query": "q", "source": "s", "date": "d", "turn": "t"}
+		aliases := map[string]string{"session": "i", "query": "q", "source": "s", "date": "d", "turn": "t", "format": "f"}
 		flag.CommandLine.VisitAll(func(f *flag.Flag) {
 			if f.Usage == "" {
 				return
@@ -126,14 +129,23 @@ func (o *options) validate() error {
 	if o.turn > 0 && o.stat {
 		return errors.New("不能同时使用 --turn 和 --stat")
 	}
-	if o.format != "" && o.format != formatTable && o.format != formatCSV {
-		return fmt.Errorf("无效的 --format 值：%s（可选：%s/%s）", o.format, formatTable, formatCSV)
+	if o.format != "" && o.format != formatJSONL && o.format != formatTable && o.format != formatCSV && o.format != formatMD {
+		return fmt.Errorf("无效的 --format 值：%s（可选：%s/%s/%s/%s）", o.format, formatJSONL, formatTable, formatCSV, formatMD)
 	}
-	if o.format == formatCSV && !o.stat {
-		return errors.New("--format 必须配合 --stat 使用")
+	if o.format != "" && o.format != formatTable && !o.stat && !o.transcript {
+		return errors.New("--format 必须配合 --stat 或 --transcript 使用")
 	}
 	if o.think && o.session == "" {
 		return errors.New("--think 必须配合 --session 使用")
+	}
+	if o.transcript && o.session == "" {
+		return errors.New("--transcript 必须配合 --session 使用")
+	}
+	if o.transcript && o.stat {
+		return errors.New("不能同时使用 --transcript 和 --stat")
+	}
+	if o.turn > 0 && o.transcript {
+		return errors.New("不能同时使用 --turn 和 --transcript")
 	}
 	return nil
 }
@@ -194,6 +206,15 @@ func main() {
 		if !session.matchesQuery(opts.query) {
 			fmt.Fprintf(os.Stderr, "错误：会话不匹配查询：%s\n", opts.query)
 			os.Exit(1)
+		}
+		if opts.transcript {
+			messages, err := extractTranscript(session)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "错误：%v\n", err)
+				os.Exit(1)
+			}
+			printTranscript(messages, opts.format)
+			return
 		}
 		if opts.stat {
 			if err := printSessionStats([]*SessionData{session}, loc, opts.format); err != nil {

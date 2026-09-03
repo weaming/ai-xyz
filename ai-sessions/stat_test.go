@@ -16,6 +16,12 @@ func TestSessionStatRow(t *testing.T) {
 		EndedAt:   &endedAt,
 		Turns:     []ConversationTurn{{}, {}, {}},
 		Models:    []string{"model-a", "model-b"},
+		TokenStats: TokenUsage{
+			InputTokens:     1000,
+			OutputTokens:    400,
+			CacheHitTokens:  2500,
+			CacheMissTokens: 500,
+		},
 	}
 	row := sessionStatRow(session, testLocation)
 	if len(row) != len(statColumns) {
@@ -32,6 +38,12 @@ func TestSessionStatRow(t *testing.T) {
 	}
 	if row[5] != "model-a+model-b" {
 		t.Fatalf("MODELS = %q", row[5])
+	}
+	if row[6] != "4.0k" || row[7] != "400" {
+		t.Fatalf("TOKENS_IN/OUT = %q/%q", row[6], row[7])
+	}
+	if row[8] != "2.5k" || row[9] != "62.50%" {
+		t.Fatalf("CACHE_HIT/RATE = %q/%q", row[8], row[9])
 	}
 	for _, cell := range row {
 		if strings.Contains(cell, ",") {

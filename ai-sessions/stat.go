@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,12 +13,14 @@ import (
 )
 
 const (
+	formatJSONL = "jsonl"
 	formatTable = "table"
 	formatCSV   = "csv"
+	formatMD    = "md"
 )
 
 // statColumns 定义 -stat 的元信息列。
-var statColumns = []string{"SOURCE", "ID", "START_TIME", "END_TIME", "TURNS", "MODELS", "TOKENS_IN", "TOKENS_OUT", "PLAN_FILE"}
+var statColumns = []string{"SOURCE", "ID", "START_TIME", "END_TIME", "TURNS", "MODELS", "TOKENS_IN", "TOKENS_OUT", "CACHE_HIT", "CACHE_HIT%"}
 
 // sessionStatRow 生成一个会话的元信息行，单元格不含逗号以便表格排版。
 func sessionStatRow(session *SessionData, loc *time.Location) []string {
@@ -33,13 +34,13 @@ func sessionStatRow(session *SessionData, loc *time.Location) []string {
 	}
 	inputTokens := ""
 	outputTokens := ""
+	cacheHit := ""
+	cacheHitRate := ""
 	if session.TokenStats.HasData() {
 		inputTokens = formatTokenCount(session.TokenStats.TotalInputTokens())
 		outputTokens = formatTokenCount(session.TokenStats.OutputTokens)
-	}
-	plan := ""
-	if planPath := findPlanMD(session); planPath != "" {
-		plan = filepath.Base(planPath)
+		cacheHit = formatTokenCount(session.TokenStats.CacheHitTokens)
+		cacheHitRate = formatPercent(session.TokenStats.CacheHitRate())
 	}
 	return []string{
 		session.Source,
@@ -50,7 +51,8 @@ func sessionStatRow(session *SessionData, loc *time.Location) []string {
 		strings.Join(session.Models, "+"),
 		inputTokens,
 		outputTokens,
-		plan,
+		cacheHit,
+		cacheHitRate,
 	}
 }
 
