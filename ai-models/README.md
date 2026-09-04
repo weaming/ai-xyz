@@ -40,5 +40,7 @@ ai-models -json                            # 输出完整 JSON
 
 ## 说明
 
+- 价格单位均为每百万 token（美元）；OpenRouter 表格含输入/输出/缓存读/缓存写四列，缺失显示 `-`。
+- 综合分按有效价格计算（有效输入价 = 输入价×2.2% + 缓存命中价×97.8%），缓存折算优先使用接口返回的真实缓存读价，缺失时按模型估算命中价（DeepSeek 约 3%，其他约 10%）。
 - Artificial Analysis 数据缓存一小时到 `~/.cache/ai-models/aa.json`。
-- 综合分统一按每百万 token 价格计算；文本输出依次为 OpenRouter 表格、Artificial Analysis 表格和综合分公式说明。
+- 文本输出依次为 OpenRouter 表格、Artificial Analysis 表格和综合分公式说明。

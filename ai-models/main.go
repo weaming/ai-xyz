@@ -231,11 +231,12 @@ func modelCompositeScore(model Model) float64 {
 		return 0
 	}
 	benchmarks := model.Benchmarks.ArtificialAnalysis
-	return computeCompositeScoreForModel(
+	return computeCompositeScoreForModelWithCacheRead(
 		model.ID,
 		benchmarks.CodingIndex,
 		benchmarks.IntelligenceIndex,
 		model.Pricing.Prompt,
 		model.Pricing.Completion,
+		model.Pricing.InputCacheRead,
 	)
 }

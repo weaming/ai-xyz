@@ -20,7 +20,7 @@ const (
 	deepSeekCachedInputPriceRatio = 0.03
 	priceBaselinePerMillion       = 1
 	openRouterPriceMultiplier     = 1_000_000
-	compositeFormulaDescription   = "综合分 = (编程分×60% + 智能分×40%) × 价格系数\n价格系数 = 1 ÷ (1 + 有效价格 ÷ 1美元/百万token)，结果限制在 0~100\n有效输入价 = 输入价×[(1−97.8%) + 97.8%×命中价系数]; DeepSeek 命中价系数约 3%，其他模型按 10%\n有效价格 = 有效输入价×99.7% + 输出价×0.3%"
+	compositeFormulaDescription   = "综合分 = (编程分×60% + 智能分×40%) × 价格系数\n价格系数 = 1 ÷ (1 + 有效价格 ÷ 1美元/百万token)，结果限制在 0~100\n有效输入价 = 输入价×2.2% + 缓存命中价×97.8%（有真实缓存读价时直接用，否则命中价按输入价估算：DeepSeek 约 3%，其他约 10%）\n有效价格 = 有效输入价×99.7% + 输出价×0.3%"
 
 	// 渠道评分参考点：吞吐 50 t/s 时吞吐因子为 0.5，延迟 1000ms 时延迟因子为 0.5。
 	channelThroughputRefTPS = 50.0
@@ -29,7 +29,7 @@ const (
 	channelUptimeExponent = 8.0
 	// 吞吐/延迟/可用率全部缺失时的回退值（回退到参考点即因子 0.5）。
 	channelFallbackUptimePct       = 99.0
-	channelScoreFormulaDescription = "渠道评分 = 100 × 价格因子 × 吞吐因子 × 延迟因子 × 可用率因子，限制在 0~100\n价格因子 = 1 ÷ (1 + 有效价格 ÷ 1美元/百万token)，有效价格沿用综合分的缓存命中折算；不支持隐式缓存的渠道不折扣\n吞吐因子 = T ÷ (T + 50 t/s)；延迟因子 = 1000ms ÷ (1000ms + L)；可用率因子 = (可用率/100)^8\n吞吐/延迟/可用率缺失时取同模型渠道中位数，无任何数据时按参考点折半（因子 0.5）/可用率按 99% 计"
+	channelScoreFormulaDescription = "渠道评分 = 100 × 价格因子 × 吞吐因子 × 延迟因子 × 可用率因子，限制在 0~100\n价格因子 = 1 ÷ (1 + 有效价格 ÷ 1美元/百万token)，有效价格 = 输入价×2.2% + 缓存价×97.8%（支持隐式缓存的渠道有真实缓存读价时直接用、否则按模型估算命中价，不支持的不折扣）\n吞吐因子 = T ÷ (T + 50 t/s)；延迟因子 = 1000ms ÷ (1000ms + L)；可用率因子 = (可用率/100)^8\n吞吐/延迟/可用率缺失时取同模型渠道中位数，无任何数据时按参考点折半（因子 0.5）/可用率按 99% 计"
 )
 
 // computeCompositeScore 兼容 OpenRouter 的价格格式（每 token），并返回 0~100 分。
@@ -82,31 +82,70 @@ func computeCompositeScorePerMillion(coding, intel, inputPrice, outputPrice floa
 
 // computeCompositeScorePerMillionWithCachePriceRatio 使用指定缓存命中价格计算综合分。
 func computeCompositeScorePerMillionWithCachePriceRatio(coding, intel, inputPrice, outputPrice, cachePriceRatio float64) float64 {
+	return computeCompositeScorePerMillionWithCacheRead(coding, intel, inputPrice, outputPrice, "", cachePriceRatio)
+}
+
+// computeCompositeScoreForModelWithCacheRead 按模型标识选择缓存命中价格比例，
+// 优先使用输入参数中的真实缓存读取价（每 token 字符串），否则按比例估算。
+func computeCompositeScoreForModelWithCacheRead(modelID string, coding, intel float64, pricePrompt, priceCompletion, cacheReadRaw string) float64 {
+	inputPrice, inputErr := parsePrice(pricePrompt)
+	outputPrice, outputErr := parsePrice(priceCompletion)
+	if inputErr != nil || outputErr != nil {
+		return 0
+	}
+	return computeCompositeScorePerMillionWithCacheRead(
+		coding,
+		intel,
+		inputPrice*openRouterPriceMultiplier,
+		outputPrice*openRouterPriceMultiplier,
+		cacheReadRaw,
+		cachedInputPriceRatioForModel(modelID),
+	)
+}
+
+// computeCompositeScorePerMillionWithCacheRead 使用每百万 token 价格计算综合分。
+// cacheReadRaw 非空时优先按真实缓存读取价折算有效输入价，否则按 cachePriceRatio 估算。
+func computeCompositeScorePerMillionWithCacheRead(coding, intel, inputPrice, outputPrice float64, cacheReadRaw string, cachePriceRatio float64) float64 {
+	effectiveInputPrice := computeEffectiveInputPricePerMillion(inputPrice, cachePriceRatio, cacheReadRaw)
+	return computeCompositeScoreFromEffectivePrice(coding, intel, effectiveInputPrice, outputPrice)
+}
+
+// computeCompositeScoreFromEffectivePrice 基于折算后的有效输入价计算综合分。
+func computeCompositeScoreFromEffectivePrice(coding, intel, effectiveInputPrice, outputPrice float64) float64 {
 	if coding < 0 {
 		coding = 0
 	}
 	if intel < 0 {
 		intel = 0
 	}
-	if inputPrice < 0 {
-		inputPrice = 0
+	if effectiveInputPrice < 0 {
+		effectiveInputPrice = 0
 	}
 	if outputPrice < 0 {
 		outputPrice = 0
 	}
-	if cachePriceRatio < 0 {
-		cachePriceRatio = 0
-	}
 
 	quality := coding*0.6 + intel*0.4
-	cacheAdjustedInputPrice := inputPrice * ((1 - averageCacheHitRate) + averageCacheHitRate*cachePriceRatio)
-	effectivePrice := cacheAdjustedInputPrice*inputTokenUsageWeight + outputPrice*outputTokenUsageWeight
+	effectivePrice := effectiveInputPrice*inputTokenUsageWeight + outputPrice*outputTokenUsageWeight
 	priceFactor := 1.0 / (1.0 + effectivePrice/priceBaselinePerMillion)
 	score := quality * priceFactor
 	if score > 100 {
 		return 100
 	}
 	return score
+}
+
+// computeEffectiveInputPricePerMillion 折算有效输入价（美元/百万 token）。
+// cacheReadRaw 非空且解析成功时用真实缓存命中价，否则按 cachePriceRatio 估算。
+func computeEffectiveInputPricePerMillion(inputPrice, cachePriceRatio float64, cacheReadRaw string) float64 {
+	if cacheRead, err := parsePrice(cacheReadRaw); err == nil && cacheRead > 0 {
+		cacheReadPerMillion := cacheRead * openRouterPriceMultiplier
+		return inputPrice*(1-averageCacheHitRate) + cacheReadPerMillion*averageCacheHitRate
+	}
+	if cachePriceRatio < 0 {
+		cachePriceRatio = 0
+	}
+	return inputPrice * ((1 - averageCacheHitRate) + averageCacheHitRate*cachePriceRatio)
 }
 
 func cachedInputPriceRatioForModel(modelID string) float64 {
@@ -125,10 +164,12 @@ func channelEffectivePricePerMillion(e ModelEndpoint, modelID string) float64 {
 		return 0
 	}
 	cacheRatio := 1.0
+	cacheReadRaw := ""
 	if e.SupportsImplicitCache {
 		cacheRatio = cachedInputPriceRatioForModel(modelID)
+		cacheReadRaw = e.Pricing.InputCacheRead
 	}
-	cacheAdjustedInputPrice := inputPrice * openRouterPriceMultiplier * ((1 - averageCacheHitRate) + averageCacheHitRate*cacheRatio)
+	cacheAdjustedInputPrice := computeEffectiveInputPricePerMillion(inputPrice*openRouterPriceMultiplier, cacheRatio, cacheReadRaw)
 	return cacheAdjustedInputPrice*inputTokenUsageWeight + outputPrice*openRouterPriceMultiplier*outputTokenUsageWeight
 }
 

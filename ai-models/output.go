@@ -19,7 +19,7 @@ func printResults(models []Model, total int, ranked bool) {
 	fmt.Printf("筛选结果：%d 个模型（共 %d 个）\n", len(models), total)
 
 	var lines []string
-	header := "模型\t名称\t上下文\t价格/百万\t编程分\t智能分\t综合得分\t免费"
+	header := "模型\t名称\t上下文\t输入/百万\t输出/百万\t缓存读/百万\t缓存写/百万\t编程分\t智能分\t综合得分\t免费"
 	if ranked {
 		header = "排名\t" + header
 	}
@@ -35,13 +35,13 @@ func printResults(models []Model, total int, ranked bool) {
 		if isFree(m) {
 			freeStr = "是"
 		}
-		pricePrompt := m.Pricing.Prompt
-		if pricePrompt == "" {
-			pricePrompt = "0"
-		}
-		score := computeCompositeScoreForModel(m.ID, coding, intel, pricePrompt, m.Pricing.Completion)
-		line := fmt.Sprintf("%s\t%s\t%d\t%s\t%.1f\t%.1f\t%.1f\t%s",
-			m.ID, m.Name, m.ContextLen, formatPricePerMillion(pricePrompt), coding, intel, score, freeStr)
+		line := fmt.Sprintf("%s\t%s\t%d\t%s\t%s\t%s\t%s\t%.1f\t%.1f\t%s\t%s",
+			m.ID, m.Name, m.ContextLen,
+			formatOptionalPricePerMillion(m.Pricing.Prompt),
+			formatOptionalPricePerMillion(m.Pricing.Completion),
+			formatOptionalPricePerMillion(m.Pricing.InputCacheRead),
+			formatOptionalPricePerMillion(m.Pricing.InputCacheWrite),
+			coding, intel, modelCompositeScoreCell(m), freeStr)
 		if ranked {
 			line = fmt.Sprintf("%d\t%s", i+1, line)
 		}
@@ -145,6 +145,30 @@ type channelRow struct {
 	score      float64
 }
 
+// modelCompositeScoreCell 计算表格中的综合分；输入或输出价格缺失时返回 "-"（无法折算有效价格）。
+func modelCompositeScoreCell(model Model) string {
+	for _, raw := range []string{model.Pricing.Prompt, model.Pricing.Completion} {
+		if _, err := parsePrice(raw); err != nil {
+			return "-"
+		}
+	}
+	coding := 0.0
+	intel := 0.0
+	if b := model.Benchmarks.ArtificialAnalysis; b != nil {
+		coding = b.CodingIndex
+		intel = b.IntelligenceIndex
+	}
+	score := computeCompositeScoreForModelWithCacheRead(
+		model.ID,
+		coding,
+		intel,
+		model.Pricing.Prompt,
+		model.Pricing.Completion,
+		model.Pricing.InputCacheRead,
+	)
+	return fmt.Sprintf("%.1f", score)
+}
+
 func printEndpoints(info ModelEndpointsInfo) {
 	fmt.Printf("=== %s（%s）的 Providers ===\n", info.Name, info.ID)
 	fmt.Printf("共 %d 个渠道（按渠道评分降序，价格单位：美元/百万 token）\n", len(info.Endpoints))
@@ -152,7 +176,7 @@ func printEndpoints(info ModelEndpointsInfo) {
 	rows := scoreEndpoints(info)
 
 	var lines []string
-	lines = append(lines, "Provider\t渠道\ttag\t评分\t上下文\t最大输出\t输入/百万\t输出/百万\t免费\t吞吐p50(t/s)\t延迟p50(ms)\t可用率1d\t量化\t隐式缓存")
+	lines = append(lines, "Provider\t渠道\ttag\t评分\t上下文\t最大输出\t输入/百万\t输出/百万\t缓存读/百万\t缓存写/百万\t免费\t吞吐p50(t/s)\t延迟p50(ms)\t可用率1d\t量化\t隐式缓存")
 	for _, row := range rows {
 		e := row.e
 		freeStr := "-"
@@ -183,9 +207,10 @@ func printEndpoints(info ModelEndpointsInfo) {
 		if tag == "" {
 			tag = "-"
 		}
-		lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%.1f\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+		lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%.1f\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			e.ProviderName, endpointShortName(e), tag, row.score, e.ContextLength, e.MaxCompletionTokens,
 			formatPricePerMillion(e.Pricing.Prompt), formatPricePerMillion(e.Pricing.Completion),
+			formatOptionalPricePerMillion(e.Pricing.InputCacheRead), formatOptionalPricePerMillion(e.Pricing.InputCacheWrite),
 			freeStr, throughput, latency, uptime, quantization, cacheStr))
 	}
 
@@ -302,4 +327,12 @@ func formatPricePerMillion(raw string) string {
 	formatted := strconv.FormatFloat(value*openRouterPriceMultiplier, 'f', 6, 64)
 	formatted = strings.TrimRight(formatted, "0")
 	return strings.TrimRight(formatted, ".")
+}
+
+// formatOptionalPricePerMillion 格式化每百万 token 价格，空值显示为 "-"。
+func formatOptionalPricePerMillion(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "-"
+	}
+	return formatPricePerMillion(raw)
 }

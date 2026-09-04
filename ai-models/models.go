@@ -43,6 +43,10 @@ type Model struct {
 type Price struct {
 	Prompt     string `json:"prompt"`
 	Completion string `json:"completion"`
+	// 缓存命中读取价（每 token），部分模型提供；web_search 为按次计费，单位不同不参与价格列。
+	InputCacheRead  string `json:"input_cache_read,omitempty"`
+	InputCacheWrite string `json:"input_cache_write,omitempty"`
+	WebSearch       string `json:"web_search,omitempty"`
 }
 
 type Bench struct {
@@ -65,6 +69,10 @@ type EndpointPricing struct {
 	Prompt     string `json:"prompt"`
 	Completion string `json:"completion"`
 	Request    string `json:"request"`
+	// 缓存命中读取/写入价（每 token），部分渠道提供。
+	InputCacheRead    string `json:"input_cache_read,omitempty"`
+	InputCacheWrite   string `json:"input_cache_write,omitempty"`
+	InputCacheWrite1h string `json:"input_cache_write_1h,omitempty"`
 }
 
 type EndpointPercentiles struct {

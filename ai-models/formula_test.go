@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -78,6 +79,51 @@ func TestDeepSeekUsesSpecificCacheHitPrice(t *testing.T) {
 	}
 }
 
+func TestCompositeScoreUsesRealCacheReadPrice(t *testing.T) {
+	// 真实缓存价占输入价 2.5%（低于默认估算的 10%）→ 有效输入价更低 → 综合分更高。
+	realCache := computeCompositeScoreForModelWithCacheRead("anthropic/claude-opus-5", 80, 60, "0.00001", "0.00005", "0.00000025")
+	estimatedCache := computeCompositeScoreForModelWithCacheRead("anthropic/claude-opus-5", 80, 60, "0.00001", "0.00005", "")
+	if realCache <= estimatedCache {
+		t.Fatalf("real cache score = %f, estimated = %f; want real > estimated", realCache, estimatedCache)
+	}
+	// 缺失或无效缓存价回退到估算路径，分数一致。
+	invalidCache := computeCompositeScoreForModelWithCacheRead("anthropic/claude-opus-5", 80, 60, "0.00001", "0.00005", "not-a-price")
+	if invalidCache != estimatedCache {
+		t.Fatalf("invalid cache score = %f, want %f", invalidCache, estimatedCache)
+	}
+	// 缓存价高于输入价时有效输入价更高，综合分低于估算路径。
+	expensiveCache := computeCompositeScoreForModelWithCacheRead("anthropic/claude-opus-5", 80, 60, "0.00001", "0.00005", "0.00002")
+	if expensiveCache >= estimatedCache {
+		t.Fatalf("expensive cache score = %f, estimated = %f; want expensive < estimated", expensiveCache, estimatedCache)
+	}
+}
+
+func TestModelCompositeScoreCell(t *testing.T) {
+	bench := &ArtificialAnalysis{CodingIndex: 80, IntelligenceIndex: 60}
+	cases := []struct {
+		name  string
+		model Model
+		want  string
+	}{
+		{"价格齐全", Model{ID: "a/b", Pricing: Price{Prompt: "0.00001", Completion: "0.00005", InputCacheRead: "0.00000025"}, Benchmarks: Bench{ArtificialAnalysis: bench}}, ""},
+		{"输入价缺失", Model{ID: "a/b", Pricing: Price{Completion: "0.00005"}, Benchmarks: Bench{ArtificialAnalysis: bench}}, "-"},
+		{"输出价缺失", Model{ID: "a/b", Pricing: Price{Prompt: "0.00001"}, Benchmarks: Bench{ArtificialAnalysis: bench}}, "-"},
+	}
+	for _, tc := range cases {
+		got := modelCompositeScoreCell(tc.model)
+		if tc.name == "价格齐全" {
+			want := fmt.Sprintf("%.1f", computeCompositeScoreForModelWithCacheRead("a/b", 80, 60, "0.00001", "0.00005", "0.00000025"))
+			if got != want {
+				t.Fatalf("modelCompositeScoreCell(价格齐全) = %q, want %q", got, want)
+			}
+			continue
+		}
+		if got != tc.want {
+			t.Fatalf("modelCompositeScoreCell(%s) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestFormatPricePerMillion(t *testing.T) {
 	cases := map[string]string{
 		"0":                   "0",
@@ -85,11 +131,18 @@ func TestFormatPricePerMillion(t *testing.T) {
 		"0.00000019999999998": "0.2",
 		"0.000001":            "1",
 		"not-a-price":         "not-a-price",
+		"0.000000002":         "0.002",
 	}
 	for raw, want := range cases {
 		if got := formatPricePerMillion(raw); got != want {
 			t.Fatalf("formatPricePerMillion(%q) = %q, want %q", raw, got, want)
 		}
+	}
+	if got := formatOptionalPricePerMillion(""); got != "-" {
+		t.Fatalf("formatOptionalPricePerMillion(empty) = %q, want -", got)
+	}
+	if got := formatOptionalPricePerMillion("0.00000013"); got != "0.13" {
+		t.Fatalf("formatOptionalPricePerMillion(%q) = %q, want 0.13", "0.00000013", got)
 	}
 }
 
