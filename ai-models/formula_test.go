@@ -138,8 +138,8 @@ func TestFormatPricePerMillion(t *testing.T) {
 			t.Fatalf("formatPricePerMillion(%q) = %q, want %q", raw, got, want)
 		}
 	}
-	if got := formatOptionalPricePerMillion(""); got != "-" {
-		t.Fatalf("formatOptionalPricePerMillion(empty) = %q, want -", got)
+	if got := formatOptionalPricePerMillion(""); got != "" {
+		t.Fatalf("formatOptionalPricePerMillion(empty) = %q, want empty", got)
 	}
 	if got := formatOptionalPricePerMillion("0.00000013"); got != "0.13" {
 		t.Fatalf("formatOptionalPricePerMillion(%q) = %q, want 0.13", "0.00000013", got)

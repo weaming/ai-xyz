@@ -329,10 +329,10 @@ func formatPricePerMillion(raw string) string {
 	return strings.TrimRight(formatted, ".")
 }
 
-// formatOptionalPricePerMillion 格式化每百万 token 价格，空值显示为 "-"。
+// formatOptionalPricePerMillion 格式化每百万 token 价格，空值返回空串不渲染占位符。
 func formatOptionalPricePerMillion(raw string) string {
 	if strings.TrimSpace(raw) == "" {
-		return "-"
+		return ""
 	}
 	return formatPricePerMillion(raw)
 }
