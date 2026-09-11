@@ -16,6 +16,7 @@ var (
 	defaultClaudeDir     = filepath.Join(homeDir(), ".claude")
 	defaultQoderDir      = filepath.Join(homeDir(), ".qoder-cn")
 	defaultQoderAppDir   = filepath.Join(homeDir(), ".qoder-cn", "cache", "projects")
+	defaultZcodeDatabase = filepath.Join(homeDir(), ".zcode", "cli", "db", "db.sqlite")
 )
 
 // options 保存命令行参数。
@@ -35,6 +36,7 @@ type options struct {
 	claudeDir     string
 	qoderDir      string
 	qoderAppDir   string
+	zcodeDatabase string
 }
 
 func parseFlags() (*options, error) {
@@ -61,9 +63,10 @@ func parseFlags() (*options, error) {
 	flag.StringVar(&opts.claudeDir, "claude-dir", defaultClaudeDir, "Claude 数据目录")
 	flag.StringVar(&opts.qoderDir, "qoder-dir", defaultQoderDir, "Qoder 数据目录")
 	flag.StringVar(&opts.qoderAppDir, "qoder-app-dir", defaultQoderAppDir, "Qoder 应用会话目录")
+	flag.StringVar(&opts.zcodeDatabase, "zcode-db", defaultZcodeDatabase, "zcode 历史数据库")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "解析 Codex、Claude、Qoder 或新版 Qoder 应用会话历史，输出输入、工具调用和最终输出。\n")
+		fmt.Fprintf(out, "解析 Codex、Claude、Qoder、新版 Qoder 应用或 zcode 会话历史，输出输入、工具调用和最终输出。\n")
 		fmt.Fprintf(out, "示例：ai-sessions -q tantivy；ai-sessions -i 019... -t 2；ai-sessions --source claude\n")
 		aliases := map[string]string{"session": "i", "query": "q", "source": "s", "date": "d", "turn": "t", "format": "f"}
 		flag.CommandLine.VisitAll(func(f *flag.Flag) {
@@ -176,7 +179,7 @@ func main() {
 		turnNumber := opts.turn
 		source := opts.source
 		if source == "all" {
-			source = detectSource(opts.session, opts.claudeDir, opts.qoderDir, opts.qoderAppDir)
+			source = detectSource(opts.session, opts)
 		}
 		captureToolDetails := turnNumber > 0
 		captureThinking := opts.think
@@ -188,6 +191,8 @@ func main() {
 			session, err = parseJSONLBySource(sourceQoder, opts.session, opts.qoderDir, loc, false, captureToolDetails, captureThinking)
 		case sourceQoderApp:
 			session, err = parseQoderApp(opts.session, opts.qoderAppDir, loc, captureThinking)
+		case sourceZcode:
+			session, err = parseZcode(opts.session, opts.zcodeDatabase, loc, captureToolDetails, captureThinking)
 		default:
 			session, err = parseJSONLBySource(sourceClaude, opts.session, opts.claudeDir, loc, false, captureToolDetails, captureThinking)
 		}
@@ -227,7 +232,7 @@ func main() {
 		return
 	}
 
-	sessions, err := loadAllSessions(opts.source, opts.codexDatabase, opts.claudeDir, opts.qoderDir, opts.qoderAppDir, loc, targetDate, opts.archived)
+	sessions, err := loadAllSessions(opts, loc, targetDate)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误：%v\n", err)
 		os.Exit(1)

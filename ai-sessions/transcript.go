@@ -17,6 +17,9 @@ type transcriptMessage struct {
 // extractTranscript 从会话源文件（Path）读取，提取完整 user/assistant 文本消息。
 // 剔除工具调用、工具结果、思考等一切非对话内容，按来源区分不同 JSONL 封套。
 func extractTranscript(session *SessionData) ([]transcriptMessage, error) {
+	if session.Source == sourceZcode {
+		return extractZcodeTranscript(session.Path, session.SessionID)
+	}
 	file, err := os.Open(session.Path)
 	if err != nil {
 		return nil, newHistoryError("读取会话源文件失败：%s：%v", session.Path, err)

@@ -13,6 +13,7 @@ const (
 	sourceCodex    = "codex"
 	sourceQoder    = "qoder"
 	sourceQoderApp = "qoder-app"
+	sourceZcode    = "zcode"
 )
 
 // TokenUsage 汇总会话的 token 使用量。
@@ -147,6 +148,7 @@ var sourceConfigs = map[string]sourceConfig{
 	sourceCodex:    {hasArchive: true},
 	sourceQoder:    {findPlan: findQoderPlanBySlug},
 	sourceQoderApp: {},
+	sourceZcode:    {},
 }
 
 // isValidSource 判断是否为已知的会话来源。

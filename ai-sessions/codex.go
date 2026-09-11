@@ -14,18 +14,18 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// connectReadonly 以只读方式打开 SQLite 历史数据库。
-func connectReadonly(databasePath string) (*sql.DB, error) {
+// connectReadonly 以只读方式打开 SQLite 历史数据库，label 用于错误信息。
+func connectReadonly(databasePath, label string) (*sql.DB, error) {
 	if _, err := os.Stat(databasePath); err != nil {
-		return nil, newHistoryError("找不到 Codex 历史数据库：%s", databasePath)
+		return nil, newHistoryError("找不到 %s 历史数据库：%s", label, databasePath)
 	}
 	db, err := sql.Open("sqlite", "file:"+databasePath+"?mode=ro")
 	if err != nil {
-		return nil, newHistoryError("打开 Codex 历史数据库失败：%v", err)
+		return nil, newHistoryError("打开 %s 历史数据库失败：%v", label, err)
 	}
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, newHistoryError("打开 Codex 历史数据库失败：%v", err)
+		return nil, newHistoryError("打开 %s 历史数据库失败：%v", label, err)
 	}
 	return db, nil
 }
@@ -54,7 +54,7 @@ func ensureCodexIndex(databasePath string) error {
 
 // resolveCodexSession 解析 Codex 会话 ID，并允许使用唯一前缀。
 func resolveCodexSession(sessionID, databasePath string) (string, string, error) {
-	db, err := connectReadonly(databasePath)
+	db, err := connectReadonly(databasePath, "Codex")
 	if err != nil {
 		return "", "", err
 	}
@@ -96,7 +96,7 @@ func parseCodex(sessionID, databasePath string, loc *time.Location, captureToolD
 	}
 	session := &SessionData{Source: sourceCodex, SessionID: resolvedID, Path: resolvedPath}
 
-	db, err := connectReadonly(databasePath)
+	db, err := connectReadonly(databasePath, "Codex")
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +272,7 @@ func codexMetaPaths(historyPath string) []string {
 
 // getCodexThreadMeta 从指定库读取线程 cwd 与归档状态，无该表或记录、库不可用时返回 ok=false。
 func getCodexThreadMeta(databasePath, sessionID string) (codexThreadMeta, bool) {
-	db, err := connectReadonly(databasePath)
+	db, err := connectReadonly(databasePath, "Codex")
 	if err != nil {
 		return codexThreadMeta{}, false
 	}
@@ -432,7 +432,7 @@ func maxInt(value, minimum int) int {
 
 // listCodexSessionIDs 列出 Codex 历史中的会话 ID。
 func listCodexSessionIDs(databasePath string, loc *time.Location, targetDate *time.Time, includeArchived bool) ([]string, error) {
-	db, err := connectReadonly(databasePath)
+	db, err := connectReadonly(databasePath, "Codex")
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +478,7 @@ func listCodexSessionIDs(databasePath string, loc *time.Location, targetDate *ti
 // 候选库均无 threads 表时返回 nil，表示无归档数据、不过滤。
 func codexArchivedIDs(databasePath string) map[string]struct{} {
 	for _, path := range codexMetaPaths(databasePath) {
-		db, err := connectReadonly(path)
+		db, err := connectReadonly(path, "Codex")
 		if err != nil {
 			continue
 		}

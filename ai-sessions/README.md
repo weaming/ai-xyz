@@ -1,6 +1,6 @@
 # ai-sessions
 
-解析本机 Codex、Claude、Qoder 会话历史，输出用户输入、工具调用和最终回答，并统计 Token 用量。
+解析本机 Codex、Claude、Qoder、zcode 会话历史，输出用户输入、工具调用和最终回答，并统计 Token 用量。
 
 ## 用法
 
@@ -34,13 +34,14 @@ ai-sessions -i 019abc --transcript --format md # 或者 Markdown 分节格式
 --transcript        配合 --session，只输出纯净的 user/assistant 对话全文（不含工具调用等）
 --plan              只显示关联了 plan 文件的会话
 --archived          列出 Codex 会话时包含已归档会话
--s, --source 来源   all/codex/claude/qoder/qoder-app，默认 all
+-s, --source 来源   all/codex/claude/qoder/qoder-app/zcode，默认 all
 -d, --date 日期     YYYY-MM-DD、yesterday 或 all，按 TZ 时区过滤，默认今天
 -f, --format 格式   -stat 用 table/csv；-transcript 用 jsonl（默认）/md
 --codex-db 路径     Codex 历史数据库，默认 ~/.codex/thread_history_1.sqlite
 --claude-dir 路径   Claude 数据目录，默认 ~/.claude
 --qoder-dir 路径    Qoder 数据目录，默认 ~/.qoder-cn
 --qoder-app-dir 路径 新版 Qoder 应用会话目录，默认 ~/.qoder-cn/cache/projects
+--zcode-db 路径     zcode 历史数据库，默认 ~/.zcode/cli/db/db.sqlite
 ```
 
 ## 输出
@@ -59,7 +60,8 @@ Timing: 12 轮 | 总耗时 22m10s | avg 1m50s | median 1m58s | max 3m47s (Q4) | 
 
 `Path` 行输出会话对应的源文件路径（相对主目录缩写为 `~`）：
 Claude/Qoder/Qoder App 为 JSONL 文件，Codex 为完整对话历史的 rollout JSONL
-（`~/.codex/sessions/` 或 `~/.codex/archived_sessions/`，缺失时回退历史库路径）。
+（`~/.codex/sessions/` 或 `~/.codex/archived_sessions/`，缺失时回退历史库路径），
+zcode 为历史数据库 `~/.zcode/cli/db/db.sqlite`。
 
 ## 导出对话（--transcript）
 
@@ -77,8 +79,8 @@ ai-sessions -i 019abc --transcript --format md  # ## user / ## assistant 分节
 归档标记仅 Codex 提供，其余来源的时间行不带 `[Archived=]`。
 
 `Models` 按首次出现顺序列出会话用过的模型（去重）：Claude/Qoder CLI 取
-助手消息的 `model` 字段，Codex 取 rollout 中 `turn_context` 的 `model`；
-Qoder App 数据中没有模型信息，不输出该行。
+助手消息的 `model` 字段，Codex 取 rollout 中 `turn_context` 的 `model`，
+zcode 取助手消息的 `modelID`；Qoder App 数据中没有模型信息，不输出该行。
 
 轮次用时按每轮内首末活动时间戳计算，两轮之间用户的空闲等待不计入；
 仅有一轮时只输出总耗时。完整视图（单会话/-q 匹配）额外列出每轮用时
@@ -94,3 +96,7 @@ Qoder App 会话正文无时间戳，时间取自应用状态库（QoderCN globa
 - Claude：`~/.claude/projects/`、`~/.claude/transcripts/` 的 JSONL，plan 按 slug 关联 `~/.claude/plans/`。
 - Qoder（CLI）：`~/.qoder-cn/projects/` 的 JSONL，plan 按 JSONL 中 `planFilePath` 精确关联 `~/.qoder-cn/plans/`。
 - Qoder App（应用）：`~/.qoder-cn/cache/projects`。
+- zcode（CLI）：`~/.zcode/cli/db/db.sqlite` 的 `session`/`message`/`part` 三张表。
+  真实提问与助手回答按 `semantics.kind`（`user_prompt`/`assistant_response`）筛选，
+  系统消息（`todo_reminder`、`timeline_event` 等）不参与问答重建；
+  Token 取助手消息 `tokens` 字段，其 `input` 已含缓存读写，统计时拆出未缓存部分。

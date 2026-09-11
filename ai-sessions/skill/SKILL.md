@@ -1,12 +1,12 @@
 ---
 name: ai-sessions
-description: 解析本机 Codex、Claude、Qoder 会话历史，查询过往 AI 对话、工具调用、Token 用量。当用户想回顾之前用 AI 做过什么、找某次会话的内容、统计 AI 使用量时使用。
+description: 解析本机 Codex、Claude、Qoder、zcode 会话历史，查询过往 AI 对话、工具调用、Token 用量。当用户想回顾之前用 AI 做过什么、找某次会话的内容、统计 AI 使用量时使用。
 allowed-tools: [Bash]
 ---
 
 # ai-sessions 技能
 
-使用本地 `ai-sessions` 二进制解析本机 Codex/Claude/Qoder 会话历史，输出用户输入、
+使用本地 `ai-sessions` 二进制解析本机 Codex/Claude/Qoder/zcode 会话历史，输出用户输入、
 工具调用和最终回答，并统计 Token 用量。适合回顾过去用 AI 做过什么、找回某次会话内容。
 
 ## 常用场景
@@ -39,7 +39,7 @@ ai-sessions -i 019abc --transcript --format md  # Markdown 分节格式
 
 | 形式 | 示例 | 说明 |
 | ---- | ---- | ---- |
-| 完整 ID | `-i 019f0e6b-3d3c-7ddc-a96a-6b6d6e2cbf01` | 各来源原始 ID（Codex/Claude/Qoder 的 UUID，Claude CLI 的 `ses_` 前缀 ID） |
+| 完整 ID | `-i 019f0e6b-3d3c-7ddc-a96a-6b6d6e2cbf01` | 各来源原始 ID（Codex/Claude/Qoder 的 UUID，Claude CLI 的 `ses_`、zcode 的 `sess_` 前缀 ID） |
 | 唯一前缀 | `-i 019f0e6b`、`-i ses_419c17e3` | 前缀命中多个会话时按 ID 排序并报错，需加长前缀直到唯一 |
 | 文件路径 | `-i ~/.claude/projects/x/y.jsonl` | 直接指向 JSONL 文件，跳过查找 |
 
@@ -57,7 +57,7 @@ ai-sessions -stat --format csv     # CSV 格式，便于进一步处理
 `TOKENS_IN` 为含缓存命中的总输入；`CACHE_HIT` 为命中的输入 token 数，
 `CACHE_HIT%` 为缓存命中率。会话详情头部输出 `Path:` 行给出源文件路径
 （相对主目录缩写为 `~`），Claude/Qoder/Qoder App 为 JSONL 文件，
-Codex 为完整对话历史的 rollout JSONL。
+Codex 为完整对话历史的 rollout JSONL，zcode 为历史数据库 `~/.zcode/cli/db/db.sqlite`。
 
 ## 常用 flag
 
@@ -71,13 +71,14 @@ Codex 为完整对话历史的 rollout JSONL。
 | `--stat` | — | 只输出元信息，`--format table/csv` 控制格式 |
 | `--plan` | — | 只显示关联了 plan 文件的会话 |
 | `--archived` | — | 列出 Codex 会话时包含已归档会话 |
-| `--source` | `-s` | `all/codex/claude/qoder/qoder-app`，默认 all |
+| `--source` | `-s` | `all/codex/claude/qoder/qoder-app/zcode`，默认 all |
 | `--date` | `-d` | `YYYY-MM-DD`、`yesterday` 或 `all`，按 TZ 过滤，默认今天 |
 | `--format` | `-f` | `-stat` 用 `table/csv`；`-transcript` 用 `jsonl`（默认）/`md` |
 | `--codex-db` | — | Codex 历史数据库，默认 `~/.codex/thread_history_1.sqlite` |
 | `--claude-dir` | — | Claude 数据目录，默认 `~/.claude` |
 | `--qoder-dir` | — | Qoder 数据目录，默认 `~/.qoder-cn` |
 | `--qoder-app-dir` | — | Qoder 应用会话目录，默认 `~/.qoder-cn/cache/projects` |
+| `--zcode-db` | — | zcode 历史数据库，默认 `~/.zcode/cli/db/db.sqlite` |
 
 ## 数据来源
 
@@ -85,3 +86,5 @@ Codex 为完整对话历史的 rollout JSONL。
 - Claude：`~/.claude/projects/`、`~/.claude/transcripts/` 的 JSONL，plan 按 slug 关联 `~/.claude/plans/`。
 - Qoder（CLI）：`~/.qoder-cn/projects/` 的 JSONL。
 - Qoder App：`~/.qoder-cn/cache/projects`，时间戳取自应用状态库，轮次用时为近似值。
+- zcode（CLI）：`~/.zcode/cli/db/db.sqlite` 的 `session`/`message`/`part` 三表；
+  只取 `semantics.kind` 为 `user_prompt`/`assistant_response` 的消息重建问答。

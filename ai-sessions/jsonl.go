@@ -318,39 +318,43 @@ func getJSONLThinking(message, item map[string]any) string {
 }
 
 // detectSource 根据会话 ID 和本地历史文件判断来源。
-func detectSource(sessionID, claudeDirectory, qoderDirectory, qoderAppDirectory string) string {
+func detectSource(sessionID string, opts *options) string {
 	if strings.HasPrefix(sessionID, "ses_") || strings.HasSuffix(sessionID, ".jsonl") {
 		return sourceClaude
 	}
 	if info, err := os.Stat(expandUser(sessionID)); err == nil && info.Mode().IsRegular() {
 		return sourceClaude
 	}
-	if len(claudeSessionCandidates(sessionID, claudeDirectory)) > 0 {
+	if len(claudeSessionCandidates(sessionID, opts.claudeDir)) > 0 {
 		return sourceClaude
 	}
-	if len(qoderSessionCandidates(sessionID, qoderDirectory)) > 0 {
+	if len(qoderSessionCandidates(sessionID, opts.qoderDir)) > 0 {
 		return sourceQoder
 	}
-	if _, err := resolveQoderAppSession(sessionID, qoderAppDirectory); err == nil {
+	if _, err := resolveQoderAppSession(sessionID, opts.qoderAppDir); err == nil {
 		return sourceQoderApp
+	}
+	if _, err := resolveZcodeSessionID(opts.zcodeDatabase, sessionID); err == nil {
+		return sourceZcode
 	}
 	return sourceCodex
 }
 
 // loadAllSessions 加载指定来源的全部可解析会话。
-func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qoderAppDirectory string, loc *time.Location, targetDate *time.Time, includeArchived bool) ([]*SessionData, error) {
+func loadAllSessions(opts *options, loc *time.Location, targetDate *time.Time) ([]*SessionData, error) {
 	var sessions []*SessionData
+	source := opts.source
 
 	if source == sourceAll || source == sourceCodex {
-		if err := ensureCodexIndex(codexDatabase); err != nil {
+		if err := ensureCodexIndex(opts.codexDatabase); err != nil {
 			return nil, err
 		}
-		sessionIDs, err := listCodexSessionIDs(codexDatabase, loc, targetDate, includeArchived)
+		sessionIDs, err := listCodexSessionIDs(opts.codexDatabase, loc, targetDate, opts.archived)
 		if err != nil {
 			return nil, err
 		}
 		for _, sessionID := range sessionIDs {
-			session, err := parseCodex(sessionID, codexDatabase, loc, false, false)
+			session, err := parseCodex(sessionID, opts.codexDatabase, loc, false, false)
 			if err != nil {
 				return nil, err
 			}
@@ -359,8 +363,8 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 	}
 
 	if source == sourceAll || source == sourceClaude {
-		for _, sessionPath := range listClaudeSessionPaths(claudeDirectory) {
-			session, err := parseJSONLBySource(sourceClaude, sessionPath, claudeDirectory, loc, true, false, false)
+		for _, sessionPath := range listClaudeSessionPaths(opts.claudeDir) {
+			session, err := parseJSONLBySource(sourceClaude, sessionPath, opts.claudeDir, loc, true, false, false)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "警告：跳过 Claude 会话：%v\n", err)
 				continue
@@ -372,8 +376,8 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 	}
 
 	if source == sourceAll || source == sourceQoder {
-		for _, sessionPath := range listQoderSessionPaths(qoderDirectory) {
-			session, err := parseJSONLBySource(sourceQoder, sessionPath, qoderDirectory, loc, true, false, false)
+		for _, sessionPath := range listQoderSessionPaths(opts.qoderDir) {
+			session, err := parseJSONLBySource(sourceQoder, sessionPath, opts.qoderDir, loc, true, false, false)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "警告：跳过 Qoder 会话：%v\n", err)
 				continue
@@ -385,7 +389,18 @@ func loadAllSessions(source, codexDatabase, claudeDirectory, qoderDirectory, qod
 	}
 
 	if source == sourceAll || source == sourceQoderApp {
-		sessions = append(sessions, listQoderAppSessions(qoderAppDirectory, loc, targetDate)...)
+		sessions = append(sessions, listQoderAppSessions(opts.qoderAppDir, loc, targetDate)...)
+	}
+
+	if source == sourceAll || source == sourceZcode {
+		zcodeSessions, err := listZcodeSessions(opts.zcodeDatabase, loc, targetDate)
+		if err != nil {
+			// 指定 zcode 来源时数据库缺失视为错误；混合来源时静默跳过，避免影响其它来源。
+			if source == sourceZcode {
+				return nil, err
+			}
+		}
+		sessions = append(sessions, zcodeSessions...)
 	}
 
 	if len(sessions) == 0 {
