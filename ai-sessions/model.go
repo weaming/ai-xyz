@@ -209,22 +209,14 @@ func (s *SessionData) refreshSummary() {
 	}
 }
 
-// matchesQuery 判断查询词是否出现在用户输入或最终输出中。
+// matchesQuery 判断查询词是否出现在用户提问中，不匹配助手回答与工具调用。
 func (s *SessionData) matchesQuery(query string) bool {
 	if query == "" {
 		return true
 	}
 	normalizedQuery := strings.ToLower(query)
-	contains := func(text string) bool {
-		return strings.Contains(strings.ToLower(text), normalizedQuery)
-	}
 	for _, input := range s.Inputs {
-		if contains(input) {
-			return true
-		}
-	}
-	for _, turn := range s.Turns {
-		if contains(turn.Answer) {
+		if strings.Contains(strings.ToLower(input), normalizedQuery) {
 			return true
 		}
 	}

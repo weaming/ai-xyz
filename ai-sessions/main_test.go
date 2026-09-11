@@ -126,7 +126,7 @@ func TestMatchesQuery(t *testing.T) {
 		{"", true},
 		{"login", true},
 		{"LOGIN", true},
-		{"登录模块", true},
+		{"修复登录模块", false},
 		{"不存在", false},
 	}
 	for _, tc := range cases {

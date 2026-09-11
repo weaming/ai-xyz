@@ -16,7 +16,7 @@ ai-sessions                         # 列出今天的会话索引
 ai-sessions -d yesterday            # 昨天的会话
 ai-sessions -d 2026-08-30           # 指定日期
 ai-sessions -d all                  # 全部日期的会话索引
-ai-sessions -q tantivy              # 按请求或最终响应文本过滤（不区分大小写）
+ai-sessions -q tantivy              # 按用户提问文本过滤（不区分大小写）
 ai-sessions -s claude               # 只看 claude 来源
 ai-sessions --plan                  # 只看关联了 plan 文件的会话
 ai-sessions --archived              # Codex 列表包含已归档会话
@@ -64,7 +64,7 @@ Codex 为完整对话历史的 rollout JSONL，zcode 为历史数据库 `~/.zcod
 | flag | 简写 | 说明 |
 | ---- | ---- | ---- |
 | `--session` | `-i` | 会话 ID：完整 ID、唯一前缀或 JSONL 文件路径均可 |
-| `--query` | `-q` | 按请求或最终响应文本过滤（不区分大小写） |
+| `--query` | `-q` | 按用户提问文本过滤（不区分大小写） |
 | `--turn` | `-t` | 配合 `-i` 输出指定问题（从 1 起）的完整详情 |
 | `--think` | — | 配合 `-i` 输出中间思考过程 |
 | `--transcript` | — | 配合 `-i` 只输出纯净的 user/assistant 对话全文（剔除工具调用、思考、系统注入内容），默认 JSONL，`--format md` 输出 Markdown |

@@ -384,7 +384,7 @@ func printMatchingSessions(sessions []*SessionData, query string, loc *time.Loca
 		}
 	}
 	if len(matching) == 0 {
-		fmt.Fprintf(os.Stderr, "错误：没有找到请求或最终响应包含\"%s\"的会话\n", query)
+		fmt.Fprintf(os.Stderr, "错误：没有找到提问包含\"%s\"的会话\n", query)
 		os.Exit(1)
 	}
 

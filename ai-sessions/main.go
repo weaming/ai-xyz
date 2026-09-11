@@ -43,7 +43,7 @@ func parseFlags() (*options, error) {
 	opts := &options{}
 	flag.StringVar(&opts.session, "session", "", "会话 ID，支持唯一前缀或 JSONL 文件路径")
 	flag.StringVar(&opts.session, "i", "", "")
-	flag.StringVar(&opts.query, "query", "", "按请求或最终响应文本过滤会话，不区分大小写")
+	flag.StringVar(&opts.query, "query", "", "按用户提问文本过滤会话，不区分大小写")
 	flag.StringVar(&opts.query, "q", "", "")
 	flag.IntVar(&opts.turn, "turn", 0, "配合 --session 使用，输出指定问题序号的完整详情：问题、工具调用输入输出和回答")
 	flag.IntVar(&opts.turn, "t", 0, "")
@@ -256,7 +256,7 @@ func main() {
 			}
 		}
 		if len(matched) == 0 {
-			fmt.Fprintf(os.Stderr, "错误：没有找到请求或最终响应包含\"%s\"的会话\n", opts.query)
+			fmt.Fprintf(os.Stderr, "错误：没有找到提问包含\"%s\"的会话\n", opts.query)
 			os.Exit(1)
 		}
 		sessions = matched

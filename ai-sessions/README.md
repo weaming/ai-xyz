@@ -14,7 +14,7 @@ ai-sessions [选项]
 ai-sessions                    # 列出今天的会话索引
 ai-sessions -d yesterday       # 昨天的会话
 ai-sessions -d all             # 全部日期的会话索引
-ai-sessions -q tantivy         # 按请求或最终响应文本过滤（不区分大小写）
+ai-sessions -q tantivy         # 按用户提问文本过滤（不区分大小写）
 ai-sessions -archived          # Codex 列表包含已归档会话
 ai-sessions -plan              # 只看关联了 plan 文件的会话
 ai-sessions --source claude    # 只看 claude 来源
@@ -28,7 +28,7 @@ ai-sessions -i 019abc --transcript --format md # 或者 Markdown 分节格式
 
 ```text
 -i, --session ID    会话 ID，支持唯一前缀或 JSONL 文件路径
--q, --query 文本    按请求或最终响应文本过滤
+-q, --query 文本    按用户提问文本过滤
 -t, --turn 序号     配合 --session，输出指定问题的完整详情
 --think             配合 --session，输出中间思考过程
 --transcript        配合 --session，只输出纯净的 user/assistant 对话全文（不含工具调用等）
