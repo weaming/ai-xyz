@@ -49,6 +49,33 @@ func TestChatRequestToResponsesNormalizesNullContent(t *testing.T) {
 	}
 }
 
+func TestChatRequestToResponsesUsesOutputTextForAssistantContent(t *testing.T) {
+	input := []byte(`{"model":"m","messages":[{"role":"user","content":"question"},{"role":"assistant","content":"answer"},{"role":"assistant","content":[{"type":"text","text":"second answer"}]}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+
+	items := value["input"].([]any)
+	assertContentType := func(index int, expected string) {
+		t.Helper()
+		item := items[index].(map[string]any)
+		content := item["content"].([]any)
+		if content[0].(map[string]any)["type"] != expected {
+			t.Fatalf("input[%d].content[0].type = %#v, want %q", index, content[0].(map[string]any)["type"], expected)
+		}
+	}
+
+	assertContentType(0, "input_text")
+	assertContentType(1, "output_text")
+	assertContentType(2, "output_text")
+}
+
 func TestResponsesRequestToChatPreservesToolPair(t *testing.T) {
 	input := []byte(`{"model":"m","instructions":"be concise","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"run"}]},{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
 	output, err := ResponsesRequestToChat(input, "", ModePreserve)

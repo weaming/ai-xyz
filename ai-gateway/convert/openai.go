@@ -929,7 +929,7 @@ func chatMessagesToResponses(messages []map[string]json.RawMessage) ([]map[strin
 	instructions := []string{}
 	for _, message := range messages {
 		role := stringValue(message["role"])
-		content, err := chatContentToResponses(message["content"])
+		content, err := chatContentToResponses(message["content"], role)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1008,22 +1008,32 @@ func responseInstructions(raw json.RawMessage) (string, error) {
 	return joinText(parts), nil
 }
 
-func chatContentToResponses(raw json.RawMessage) ([]map[string]any, error) {
+func chatContentToResponses(raw json.RawMessage, role string) ([]map[string]any, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return []map[string]any{}, nil
 	}
 	if text := stringValue(raw); text != "" {
-		return []map[string]any{{"type": "input_text", "text": text}}, nil
+		contentType := "input_text"
+		if role == "assistant" {
+			contentType = "output_text"
+		}
+		return []map[string]any{{"type": contentType, "text": text}}, nil
 	}
 	parts := []map[string]json.RawMessage{}
 	if err := json.Unmarshal(raw, &parts); err != nil {
 		return nil, fmt.Errorf("解析消息 content: %w", err)
 	}
 	result := make([]map[string]any, 0, len(parts))
+	contentType := "input_text"
+	if role == "assistant" {
+		contentType = "output_text"
+	}
 	for _, part := range parts {
 		switch stringValue(part["type"]) {
 		case "text", "input_text":
-			result = append(result, map[string]any{"type": "input_text", "text": stringValue(part["text"])})
+			result = append(result, map[string]any{"type": contentType, "text": stringValue(part["text"])})
+		case "output_text":
+			result = append(result, map[string]any{"type": contentType, "text": stringValue(part["text"])})
 		case "image_url", "input_image":
 			image := objectMap(part["image_url"])
 			url := stringValue(part["image_url"])
