@@ -100,6 +100,18 @@ fn handle_request(
         respond_error(request, StatusCode(400), "读取请求体失败", false);
         return Err(error.into());
     }
+    body = match normalize_request_body(&body) {
+        Ok(body) => body,
+        Err(error) => {
+            respond_error(
+                request,
+                StatusCode(400),
+                "请求体必须是合法 JSON 对象",
+                false,
+            );
+            return Err(error);
+        }
+    };
     let auth_headers = match auth.auth_headers() {
         Ok(headers) => headers,
         Err(error) => {
@@ -122,6 +134,17 @@ fn handle_request(
     };
 
     respond_upstream(request, upstream_response)
+}
+
+fn normalize_request_body(body: &[u8]) -> Result<Vec<u8>> {
+    let mut payload: serde_json::Value =
+        serde_json::from_slice(body).context("解析 Responses API 请求体失败")?;
+    let object = payload
+        .as_object_mut()
+        .context("Responses API 请求体必须是 JSON 对象")?;
+    object.insert("store".to_owned(), serde_json::Value::Bool(false));
+    object.insert("stream".to_owned(), serde_json::Value::Bool(true));
+    serde_json::to_vec(&payload).context("序列化 Responses API 请求体失败")
 }
 
 fn is_authorized(request: &Request, expected: Option<&[u8]>) -> bool {
@@ -235,4 +258,28 @@ fn write_server_info(path: &Path, port: u16) -> Result<()> {
     let mut file = fs::File::create(path)?;
     writeln!(file, "{}", serde_json::to_string(&content)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_request_body;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_request_body_sets_upstream_required_fields() {
+        let body = br#"{"model":"gpt-5.6-luna","input":[],"store":true,"stream":false}"#;
+        let normalized = normalize_request_body(body).expect("请求体应可解析");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&normalized).expect("规范化后的请求体应可解析");
+
+        assert_eq!(payload["model"], "gpt-5.6-luna");
+        assert_eq!(payload["store"], json!(false));
+        assert_eq!(payload["stream"], json!(true));
+    }
+
+    #[test]
+    fn normalize_request_body_rejects_non_object() {
+        let error = normalize_request_body(br#"[]"#).expect_err("数组不应被接受");
+        assert!(error.to_string().contains("必须是 JSON 对象"));
+    }
 }
