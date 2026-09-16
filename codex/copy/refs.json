@@ -1,0 +1,54 @@
+[
+  {
+    "copy": "login/src/auth/manager.rs",
+    "official": "login/src/auth/manager.rs"
+  },
+  {
+    "copy": "login/src/auth/storage.rs",
+    "official": "login/src/auth/storage.rs"
+  },
+  {
+    "copy": "login/src/token_data.rs",
+    "official": "login/src/token_data.rs"
+  },
+  {
+    "copy": "model-provider/src/bearer_auth_provider.rs",
+    "official": "model-provider/src/bearer_auth_provider.rs"
+  },
+  {
+    "copy": "utils/absolute-path/Cargo.toml",
+    "official": "utils/absolute-path/Cargo.toml"
+  },
+  {
+    "copy": "utils/absolute-path/src/absolutize.rs",
+    "official": "utils/absolute-path/src/absolutize.rs"
+  },
+  {
+    "copy": "utils/absolute-path/src/lib.rs",
+    "official": "utils/absolute-path/src/lib.rs"
+  },
+  {
+    "copy": "utils/path-uri/Cargo.toml",
+    "official": "utils/path-uri/Cargo.toml"
+  },
+  {
+    "copy": "utils/path-uri/src/absolute_path_normalization.rs",
+    "official": "utils/path-uri/src/absolute_path_normalization.rs"
+  },
+  {
+    "copy": "utils/path-uri/src/config_path.rs",
+    "official": "utils/path-uri/src/config_path.rs"
+  },
+  {
+    "copy": "utils/path-uri/src/api_path_string.rs",
+    "official": "utils/path-uri/src/api_path_string.rs"
+  },
+  {
+    "copy": "utils/path-uri/src/lib.rs",
+    "official": "utils/path-uri/src/lib.rs"
+  },
+  {
+    "copy": "utils/path-uri/src/native_path_bytes.rs",
+    "official": "utils/path-uri/src/native_path_bytes.rs"
+  }
+]
