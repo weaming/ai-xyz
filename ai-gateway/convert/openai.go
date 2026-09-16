@@ -1010,7 +1010,7 @@ func responseInstructions(raw json.RawMessage) (string, error) {
 
 func chatContentToResponses(raw json.RawMessage) ([]map[string]any, error) {
 	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
+		return []map[string]any{}, nil
 	}
 	if text := stringValue(raw); text != "" {
 		return []map[string]any{{"type": "input_text", "text": text}}, nil

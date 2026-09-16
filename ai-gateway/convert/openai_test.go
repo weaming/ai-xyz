@@ -29,6 +29,26 @@ func TestChatRequestToResponses(t *testing.T) {
 	}
 }
 
+func TestChatRequestToResponsesNormalizesNullContent(t *testing.T) {
+	input := []byte(`{"model":"m","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"shell","arguments":"{}"}}]}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+	items := value["input"].([]any)
+	message := items[0].(map[string]any)
+	if content, ok := message["content"].([]any); !ok || content == nil {
+		t.Fatalf("content = %#v", message["content"])
+	}
+	if items[1].(map[string]any)["type"] != "function_call" {
+		t.Fatalf("input = %#v", items)
+	}
+}
+
 func TestResponsesRequestToChatPreservesToolPair(t *testing.T) {
 	input := []byte(`{"model":"m","instructions":"be concise","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"run"}]},{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
 	output, err := ResponsesRequestToChat(input, "", ModePreserve)
