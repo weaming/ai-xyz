@@ -72,16 +72,6 @@ func contentText(parts []map[string]any) string {
 	return builder.String()
 }
 
-func contentTextRaw(parts []map[string]json.RawMessage) string {
-	var builder strings.Builder
-	for _, part := range parts {
-		if stringValue(part["type"]) == "input_text" || stringValue(part["type"]) == "output_text" {
-			builder.WriteString(stringValue(part["text"]))
-		}
-	}
-	return builder.String()
-}
-
 func joinText(parts []string) string {
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
@@ -95,6 +85,11 @@ func stringValue(raw json.RawMessage) string {
 		return value
 	}
 	return ""
+}
+
+func stringValueAny(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func intValue(raw json.RawMessage) int64 {

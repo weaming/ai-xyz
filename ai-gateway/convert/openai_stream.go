@@ -110,10 +110,13 @@ func (state *responsesStreamState) consume(frame SSEFrame) error {
 		appendItemText(item, "refusal", stringValue(data["delta"]))
 	case "response.function_call_arguments.delta":
 		item := state.item(data, "function_call")
-		item["arguments"] = stringValueValue(item["arguments"]) + stringValue(data["delta"])
+		item["arguments"] = stringValueAny(item["arguments"]) + stringValue(data["delta"])
 	case "response.custom_tool_call_input.delta":
 		item := state.item(data, "custom_tool_call")
-		item["input"] = stringValueValue(item["input"]) + stringValue(data["delta"])
+		item["input"] = stringValueAny(item["input"]) + stringValue(data["delta"])
+	}
+	if isUnsupportedResponsesStreamEvent(eventType) {
+		return fmt.Errorf("Responses 聚合暂不支持 stream event %q", eventType)
 	}
 	return nil
 }
@@ -195,17 +198,12 @@ func appendItemText(item map[string]any, partType, delta string) {
 		if !ok || part["type"] != partType {
 			continue
 		}
-		part["text"] = stringValueValue(part["text"]) + delta
+		part["text"] = stringValueAny(part["text"]) + delta
 		item["content"] = content
 		return
 	}
 	content = append(content, map[string]any{"type": partType, "text": delta})
 	item["content"] = content
-}
-
-func stringValueValue(value any) string {
-	text, _ := value.(string)
-	return text
 }
 
 type chatStreamState struct {
@@ -221,8 +219,10 @@ type chatStreamState struct {
 
 type chatToolState struct {
 	id        string
+	kind      string
 	name      string
 	arguments strings.Builder
+	input     strings.Builder
 }
 
 func newChatStreamState() *chatStreamState {
@@ -260,11 +260,22 @@ func (state *chatStreamState) consume(frame SSEFrame) error {
 			index := int(intValue(rawCall["index"]))
 			tool := state.toolCalls[index]
 			if tool == nil {
-				tool = &chatToolState{}
+				tool = &chatToolState{kind: stringValue(rawCall["type"])}
 				state.toolCalls[index] = tool
+			}
+			if tool.kind == "" {
+				tool.kind = stringValue(rawCall["type"])
 			}
 			if id := stringValue(rawCall["id"]); id != "" {
 				tool.id = id
+			}
+			if tool.kind == "custom" {
+				custom := objectMap(rawCall["custom"])
+				if name := stringValue(custom["name"]); name != "" {
+					tool.name = name
+				}
+				tool.input.WriteString(stringValue(custom["input"]))
+				continue
 			}
 			function := objectMap(rawCall["function"])
 			if name := stringValue(function["name"]); name != "" {
@@ -295,14 +306,14 @@ func (state *chatStreamState) response() ([]byte, error) {
 	toolCalls := make([]any, 0, len(indices))
 	for _, index := range indices {
 		tool := state.toolCalls[index]
-		toolCalls = append(toolCalls, map[string]any{
-			"id":   tool.id,
-			"type": "function",
-			"function": map[string]any{
-				"name":      tool.name,
-				"arguments": tool.arguments.String(),
-			},
-		})
+		call := map[string]any{"id": tool.id, "type": tool.kind}
+		if tool.kind == "custom" {
+			call["custom"] = map[string]any{"name": tool.name, "input": tool.input.String()}
+		} else {
+			call["type"] = "function"
+			call["function"] = map[string]any{"name": tool.name, "arguments": tool.arguments.String()}
+		}
+		toolCalls = append(toolCalls, call)
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
@@ -350,8 +361,10 @@ type streamState struct {
 type streamTool struct {
 	itemID      string
 	callID      string
+	kind        string
 	name        string
 	arguments   strings.Builder
+	input       strings.Builder
 	outputIndex int
 }
 
@@ -379,11 +392,15 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 		return []SSEFrame{{Data: mustJSONString(chatChunk(state, map[string]any{"role": "assistant"}, nil, ""))}}, nil
 	case "response.output_item.added":
 		item := objectMap(data["item"])
-		if stringValue(item["type"]) != "function_call" && stringValue(item["type"]) != "custom_tool_call" {
+		itemType := stringValue(item["type"])
+		if itemType == "message" {
 			return nil, nil
 		}
+		if itemType != "function_call" && itemType != "custom_tool_call" {
+			return nil, fmt.Errorf("Chat Completions 暂不支持 Responses stream item type %q", itemType)
+		}
 		tool := state.addResponseTool(item, int(intValue(data["output_index"])))
-		call := map[string]any{"index": toolIndex(state, tool), "id": tool.callID, "type": "function", "function": map[string]any{"name": tool.name, "arguments": ""}}
+		call := toolCallChunk(state, tool, "")
 		return []SSEFrame{{Data: mustJSONString(chatChunk(state, nil, []any{call}, ""))}}, nil
 	case "response.output_text.delta":
 		return []SSEFrame{{Data: mustJSONString(chatChunk(state, map[string]any{"content": stringValue(data["delta"])}, nil, ""))}}, nil
@@ -400,8 +417,7 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 			return nil, fmt.Errorf("Responses 工具增量缺少可识别的 output item")
 		}
 		delta := stringValue(data["delta"])
-		tool.arguments.WriteString(delta)
-		call := map[string]any{"index": toolIndex(state, tool), "function": map[string]any{"arguments": delta}}
+		call := toolCallChunk(state, tool, delta)
 		return []SSEFrame{{Data: mustJSONString(chatChunk(state, nil, []any{call}, ""))}}, nil
 	case "response.completed":
 		response := objectMap(data["response"])
@@ -410,6 +426,9 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 	case "response.failed", "response.incomplete":
 		return state.completeChat(true), nil
 	default:
+		if isUnsupportedResponsesStreamEvent(eventType) {
+			return nil, fmt.Errorf("Chat Completions 暂不支持 Responses stream event %q", eventType)
+		}
 		return nil, nil
 	}
 }
@@ -448,6 +467,12 @@ func (state *streamState) chatFrameToResponses(frame SSEFrame) ([]SSEFrame, erro
 	}
 	for _, choice := range choices {
 		delta := objectMap(choice["delta"])
+		if hasJSONValue(delta["audio"]) {
+			return nil, fmt.Errorf("Responses 暂不支持 Chat audio stream delta")
+		}
+		if hasJSONValue(delta["function_call"]) {
+			return nil, fmt.Errorf("Responses 不支持旧版 Chat function_call stream delta")
+		}
 		if content := stringValue(delta["content"]); content != "" {
 			frames = append(frames, state.openMessage()...)
 			state.messageText.WriteString(content)
@@ -491,6 +516,10 @@ func (state *streamState) setResponse(response map[string]json.RawMessage) {
 	if usage := usageFromResponses(response["usage"]); usage != nil {
 		state.usage = usage
 	}
+	switch stringValue(response["status"]) {
+	case "failed", "incomplete", "cancelled":
+		state.finish = responseFinishReason(response)
+	}
 }
 
 func (state *streamState) addResponseTool(item map[string]json.RawMessage, outputIndex int) *streamTool {
@@ -501,7 +530,11 @@ func (state *streamState) addResponseTool(item map[string]json.RawMessage, outpu
 	if existing := state.toolByKey[key]; existing != nil {
 		return existing
 	}
-	tool := &streamTool{itemID: stringValue(item["id"]), callID: stringValue(item["call_id"]), name: stringValue(item["name"]), outputIndex: outputIndex}
+	kind := "function"
+	if stringValue(item["type"]) == "custom_tool_call" {
+		kind = "custom"
+	}
+	tool := &streamTool{itemID: stringValue(item["id"]), callID: stringValue(item["call_id"]), kind: kind, name: stringValue(item["name"]), outputIndex: outputIndex}
 	state.toolByKey[key] = tool
 	state.tools = append(state.tools, tool)
 	return tool
@@ -535,6 +568,14 @@ func (state *streamState) openMessage() []SSEFrame {
 
 func (state *streamState) chatToolFrames(raw map[string]json.RawMessage) []SSEFrame {
 	function := objectMap(raw["function"])
+	custom := objectMap(raw["custom"])
+	toolType := stringValue(raw["type"])
+	if toolType == "" {
+		toolType = "function"
+	}
+	if toolType != "function" && toolType != "custom" {
+		return nil
+	}
 	key := stringValue(raw["id"])
 	indexKey := "index:" + strconv.FormatInt(intValue(raw["index"]), 10)
 	if key == "" {
@@ -554,7 +595,11 @@ func (state *streamState) chatToolFrames(raw map[string]json.RawMessage) []SSEFr
 		if state.messageOpen {
 			outputIndex++
 		}
-		tool = &streamTool{itemID: "fc_" + callID, callID: callID, name: stringValue(function["name"]), outputIndex: outputIndex}
+		name := stringValue(function["name"])
+		if toolType == "custom" {
+			name = stringValue(custom["name"])
+		}
+		tool = &streamTool{itemID: "fc_" + callID, callID: callID, kind: toolType, name: name, outputIndex: outputIndex}
 		state.toolByKey[key] = tool
 		state.toolByKey[indexKey] = tool
 		state.tools = append(state.tools, tool)
@@ -562,11 +607,25 @@ func (state *streamState) chatToolFrames(raw map[string]json.RawMessage) []SSEFr
 	frames := []SSEFrame{}
 	if tool.name == "" {
 		tool.name = stringValue(function["name"])
+		if tool.kind == "custom" {
+			tool.name = stringValue(custom["name"])
+		}
 	}
 	if isNew {
-		frames = append(frames, state.responsesFrame("response.output_item.added", map[string]any{"output_index": tool.outputIndex, "item": map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": "", "status": "in_progress"}}))
+		item := map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": "", "status": "in_progress"}
+		if tool.kind == "custom" {
+			item["type"] = "custom_tool_call"
+			delete(item, "arguments")
+			item["input"] = ""
+		}
+		frames = append(frames, state.responsesFrame("response.output_item.added", map[string]any{"output_index": tool.outputIndex, "item": item}))
 	}
-	if arguments := stringValue(function["arguments"]); arguments != "" {
+	if tool.kind == "custom" {
+		if input := stringValue(custom["input"]); input != "" {
+			tool.input.WriteString(input)
+			frames = append(frames, state.responsesFrame("response.custom_tool_call_input.delta", map[string]any{"item_id": tool.itemID, "output_index": tool.outputIndex, "call_id": tool.callID, "delta": input}))
+		}
+	} else if arguments := stringValue(function["arguments"]); arguments != "" {
 		tool.arguments.WriteString(arguments)
 		frames = append(frames, state.responsesFrame("response.function_call_arguments.delta", map[string]any{"item_id": tool.itemID, "output_index": tool.outputIndex, "call_id": tool.callID, "delta": arguments}))
 	}
@@ -613,12 +672,36 @@ func (state *streamState) completeResponses() []SSEFrame {
 		)
 	}
 	for _, tool := range state.tools {
+		item := map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String(), "status": "completed"}
+		doneEvent := "response.function_call_arguments.done"
+		doneField := "arguments"
+		doneValue := tool.arguments.String()
+		if tool.kind == "custom" {
+			item["type"] = "custom_tool_call"
+			delete(item, "arguments")
+			item["input"] = tool.input.String()
+			doneEvent = "response.custom_tool_call_input.done"
+			doneField = "input"
+			doneValue = tool.input.String()
+		}
 		frames = append(frames,
-			state.responsesFrame("response.function_call_arguments.done", map[string]any{"item_id": tool.itemID, "output_index": tool.outputIndex, "call_id": tool.callID, "arguments": tool.arguments.String()}),
-			state.responsesFrame("response.output_item.done", map[string]any{"output_index": tool.outputIndex, "item": map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String(), "status": "completed"}}),
+			state.responsesFrame(doneEvent, map[string]any{"item_id": tool.itemID, "output_index": tool.outputIndex, "call_id": tool.callID, doneField: doneValue}),
+			state.responsesFrame("response.output_item.done", map[string]any{"output_index": tool.outputIndex, "item": item}),
 		)
 	}
-	frames = append(frames, state.responsesFrame("response.completed", map[string]any{"response": state.responseObject("completed")}))
+	status, incompleteDetails := responsesStatusFromChatFinish(state.finish)
+	response := state.responseObject(status)
+	if incompleteDetails != nil {
+		response["incomplete_details"] = incompleteDetails
+	}
+	completionEvent := "response.completed"
+	if status == "incomplete" {
+		completionEvent = "response.incomplete"
+	}
+	if status == "failed" {
+		completionEvent = "response.failed"
+	}
+	frames = append(frames, state.responsesFrame(completionEvent, map[string]any{"response": response}))
 	return frames
 }
 
@@ -628,7 +711,13 @@ func (state *streamState) responseObject(status string) map[string]any {
 		output = append(output, map[string]any{"id": state.messageID, "type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": state.messageText.String(), "annotations": []any{}}}, "status": status})
 	}
 	for _, tool := range state.tools {
-		output = append(output, map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String(), "status": status})
+		item := map[string]any{"id": tool.itemID, "type": "function_call", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String(), "status": status}
+		if tool.kind == "custom" {
+			item["type"] = "custom_tool_call"
+			delete(item, "arguments")
+			item["input"] = tool.input.String()
+		}
+		output = append(output, item)
 	}
 	result := map[string]any{"id": state.responseID, "object": "response", "created_at": state.created, "model": state.model, "status": status, "output": output}
 	if state.usage != nil {
@@ -674,4 +763,35 @@ func toolIndex(state *streamState, tool *streamTool) int {
 		}
 	}
 	return 0
+}
+
+func toolCallChunk(state *streamState, tool *streamTool, delta string) map[string]any {
+	call := map[string]any{"index": toolIndex(state, tool), "id": tool.callID, "type": tool.kind}
+	if tool.kind == "custom" {
+		tool.input.WriteString(delta)
+		call["custom"] = map[string]any{"name": tool.name, "input": delta}
+		return call
+	}
+	tool.arguments.WriteString(delta)
+	call["type"] = "function"
+	call["function"] = map[string]any{"name": tool.name, "arguments": delta}
+	return call
+}
+
+func isUnsupportedResponsesStreamEvent(eventType string) bool {
+	for _, prefix := range []string{
+		"response.audio.",
+		"response.web_search_call.",
+		"response.file_search_call.",
+		"response.code_interpreter_call.",
+		"response.computer_call.",
+		"response.image_generation_call.",
+		"response.mcp_call.",
+		"response.tool_search_call.",
+	} {
+		if strings.HasPrefix(eventType, prefix) {
+			return true
+		}
+	}
+	return false
 }
