@@ -93,6 +93,36 @@ func TestGatewayTranslatesChatToResponses(t *testing.T) {
 	}
 }
 
+func TestGatewayUsesDeepSeekResponsesPath(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/responses" {
+			t.Errorf("upstream path = %s", request.URL.Path)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"resp_1"}`))
+	}))
+	defer upstream.Close()
+
+	handler, err := New(config.Config{Routes: []config.Route{{
+		ID: "deepseek-responses",
+		Upstream: config.Upstream{
+			Provider: "deepseek",
+			Protocol: convert.ProtocolResponses,
+			BaseURL:  upstream.URL,
+		},
+	}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/provider/deepseek-responses/v1/responses", strings.NewReader(`{"model":"deepseek-flash","input":"hi"}`))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"id":"resp_1"}` {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestGatewayAggregatesForcedResponsesStream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

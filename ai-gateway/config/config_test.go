@@ -53,3 +53,21 @@ func TestLoadExample(t *testing.T) {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
+
+func TestLoadDeepSeekResponsesRoute(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "secret")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := []byte("routes:\n  - id: deepseek-responses\n    upstream:\n      provider: deepseek\n      protocol: responses\n      base_url: https://api.deepseek.com\n      token_env: DEEPSEEK_API_KEY\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := cfg.Routes[0]
+	if route.Upstream.Provider != "deepseek" || route.Upstream.Protocol != "responses" {
+		t.Fatalf("route = %#v", route)
+	}
+}

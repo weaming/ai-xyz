@@ -178,8 +178,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 	}
 
-	upstreamPath := "/v1/" + upstreamProtocolPath(upstreamProtocol)
-	upstreamURL := joinUpstreamURL(route.config.Upstream.BaseURL, upstreamPath)
+	upstreamRequestPath := resolveUpstreamPath(route.config.Upstream.Provider, upstreamProtocol)
+	upstreamURL := joinUpstreamURL(route.config.Upstream.BaseURL, upstreamRequestPath)
 	upstreamRequest, err := http.NewRequestWithContext(request.Context(), http.MethodPost, upstreamURL, strings.NewReader(string(upstreamBody)))
 	if err != nil {
 		failure = err.Error()
@@ -393,6 +393,14 @@ func parseAPIPath(path string) (string, convert.Protocol, bool) {
 		return parts[1], convert.ProtocolResponses, true
 	}
 	return "", "", false
+}
+
+func resolveUpstreamPath(provider string, protocol convert.Protocol) string {
+	if provider == "deepseek" && protocol == convert.ProtocolResponses {
+		return "/responses"
+	}
+
+	return "/v1/" + upstreamProtocolPath(protocol)
 }
 
 func upstreamProtocolPath(protocol convert.Protocol) string {

@@ -41,6 +41,8 @@ routes:
 
 `upstream.protocol` 可选 `responses` 或 `chat`。代理优先使用配置中的 `proxy`；未配置时使用 Go 的 `ProxyFromEnvironment`，因此会自动识别 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY` 和 `NO_PROXY`。
 
-`upstream.provider` 目前实现 `openai` 和 `deepseek`。DeepSeek 使用 Chat Completions-compatible upstream；配置模型保留 `anthropic` 和 `google`，后续分别接入 Messages、GenerateContent/Interactions adapter，并由 adapter 声明 `capabilities`。
+`upstream.provider` 目前实现 `openai` 和 `deepseek`。DeepSeek 支持 Chat Completions 和 Responses 两种上游协议；配置模型保留 `anthropic` 和 `google`，后续分别接入 Messages、GenerateContent/Interactions adapter，并由 adapter 声明 `capabilities`。
+
+DeepSeek Responses 路由的 `base_url` 使用 `https://api.deepseek.com`，网关会请求上游 `/responses`；OpenAI/Codex 等标准 Responses 路由仍使用带 `/v1` 的 base URL。
 
 `auth.token` 为空表示不启用入口鉴权；启用后要求 `Authorization: Bearer <token>`。上游鉴权优先使用 `upstream.token`，否则从 `upstream.token_env` 指定的环境变量读取，不会把客户端 token 转发到上游。

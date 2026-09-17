@@ -147,9 +147,6 @@ func (cfg *Config) Validate() error {
 		if route.Upstream.Protocol != convert.ProtocolResponses && route.Upstream.Protocol != convert.ProtocolChatCompletions {
 			return fmt.Errorf("route %q 的 upstream.protocol 必须是 responses 或 chat", route.ID)
 		}
-		if route.Upstream.Provider == "deepseek" && route.Upstream.Protocol != convert.ProtocolChatCompletions {
-			return fmt.Errorf("route %q 的 deepseek upstream.protocol 必须是 chat", route.ID)
-		}
 		if route.Upstream.BaseURL == "" {
 			return fmt.Errorf("route %q 缺少 upstream.base_url", route.ID)
 		}
