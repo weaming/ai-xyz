@@ -105,6 +105,11 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		gateway.serveDebug(writer, request)
 		return
 	}
+	if fileRouteID, ok := parseFilesPath(request.URL.Path); ok {
+		routeID = fileRouteID
+		gateway.handleFilesUpload(writer, request, fileRouteID)
+		return
+	}
 
 	var ok bool
 	routeID, incomingProtocol, ok = parseAPIPath(request.URL.Path)
