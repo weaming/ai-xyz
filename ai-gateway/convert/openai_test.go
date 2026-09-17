@@ -413,6 +413,41 @@ func TestResponsesToChatStream(t *testing.T) {
 	}
 }
 
+func TestResponsesToChatStreamHandlesReasoningOutputItem(t *testing.T) {
+	input := strings.Join([]string{
+		`event: response.created`, `data: {"type":"response.created","response":{"id":"resp_1","model":"m","created_at":10}}`, "",
+		`event: response.output_item.added`, `data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_1","type":"reasoning","status":"in_progress","summary":[]}}`, "",
+		`event: response.reasoning_summary_text.delta`, `data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","output_index":0,"delta":"思考"}`, "",
+		`event: response.output_text.delta`, `data: {"type":"response.output_text.delta","output_index":1,"delta":"答案"}`, "",
+		`event: response.output_item.done`, `data: {"type":"response.output_item.done","output_index":0,"item":{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"思考"}]}}`, "",
+		`event: response.completed`, `data: {"type":"response.completed","response":{"id":"resp_1","model":"m","created_at":10,"status":"completed"}}`, "",
+	}, "\n")
+
+	tests := []struct {
+		name          string
+		emitReasoning bool
+		wantReasoning bool
+	}{
+		{name: "emits reasoning", emitReasoning: true, wantReasoning: true},
+		{name: "hides reasoning", emitReasoning: false, wantReasoning: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := ResponsesToChatStream(strings.NewReader(input), &output, test.emitReasoning); err != nil {
+				t.Fatal(err)
+			}
+			outputText := output.String()
+			if !strings.Contains(outputText, `"content":"答案"`) || !strings.Contains(outputText, "[DONE]") {
+				t.Fatalf("output = %s", outputText)
+			}
+			if hasReasoning := strings.Contains(outputText, `"reasoning_content":"思考"`); hasReasoning != test.wantReasoning {
+				t.Fatalf("reasoning output = %v, want %v; output = %s", hasReasoning, test.wantReasoning, outputText)
+			}
+		})
+	}
+}
+
 func TestResponsesStreamToChatResponse(t *testing.T) {
 	input := strings.Join([]string{
 		`event: response.created`, `data: {"type":"response.created","response":{"id":"resp_1","model":"m","created_at":10}}`, "",

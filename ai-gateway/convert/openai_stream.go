@@ -393,7 +393,7 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 	case "response.output_item.added":
 		item := objectMap(data["item"])
 		itemType := stringValue(item["type"])
-		if itemType == "message" {
+		if itemType == "message" || itemType == "reasoning" {
 			return nil, nil
 		}
 		if itemType != "function_call" && itemType != "custom_tool_call" {
