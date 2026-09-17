@@ -8,17 +8,18 @@ import (
 	"testing"
 
 	"github.com/weaming/ai-xyz/ai-gateway/config"
+	"github.com/weaming/ai-xyz/ai-gateway/convert"
 )
 
 func TestParseAPIPath(t *testing.T) {
 	tests := []struct {
 		path     string
 		id       string
-		protocol string
+		protocol convert.Protocol
 		ok       bool
 	}{
-		{path: "/provider/codex/v1/chat/completions", id: "codex", protocol: "/v1/chat/completions", ok: true},
-		{path: "/provider/codex/v1/responses", id: "codex", protocol: "/v1/responses", ok: true},
+		{path: "/provider/codex/v1/chat/completions", id: "codex", protocol: convert.ProtocolChatCompletions, ok: true},
+		{path: "/provider/codex/v1/responses", id: "codex", protocol: convert.ProtocolResponses, ok: true},
 		{path: "/provider/codex/v1/models", ok: false},
 	}
 	for _, test := range tests {

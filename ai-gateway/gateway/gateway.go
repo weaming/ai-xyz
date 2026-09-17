@@ -29,6 +29,7 @@ type routeHandler struct {
 	config        config.Route
 	upstreamToken string
 	client        *http.Client
+	converter     convert.Converter
 }
 
 // New 创建网关 HTTP handler。
@@ -37,7 +38,12 @@ func New(cfg config.Config, logger *slog.Logger) (*Gateway, error) {
 		logger = slog.Default()
 	}
 	routes := make(map[string]routeHandler, len(cfg.Routes))
+	converters := convert.DefaultRegistry()
 	for _, route := range cfg.Routes {
+		converter, err := converters.ForProvider(route.Upstream.Provider)
+		if err != nil {
+			return nil, fmt.Errorf("route %q: %w", route.ID, err)
+		}
 		upstreamToken, err := route.Upstream.ResolveToken()
 		if err != nil {
 			return nil, fmt.Errorf("route %q: %w", route.ID, err)
@@ -46,7 +52,7 @@ func New(cfg config.Config, logger *slog.Logger) (*Gateway, error) {
 		if err != nil {
 			return nil, fmt.Errorf("route %q: %w", route.ID, err)
 		}
-		routes[route.ID] = routeHandler{config: route, upstreamToken: upstreamToken, client: client}
+		routes[route.ID] = routeHandler{config: route, upstreamToken: upstreamToken, client: client, converter: converter}
 	}
 	return &Gateway{routes: routes, logger: logger, debug: newDebugHub()}, nil
 }
@@ -70,8 +76,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	startedAt := time.Now()
 	routeID := ""
-	incomingProtocol := ""
-	upstreamProtocol := ""
+	incomingProtocol := convert.Protocol("")
+	upstreamProtocol := convert.Protocol("")
 	stream := false
 	var failure string
 	defer func() {
@@ -100,9 +106,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	var protocolPath string
 	var ok bool
-	routeID, protocolPath, ok = parseAPIPath(request.URL.Path)
+	routeID, incomingProtocol, ok = parseAPIPath(request.URL.Path)
 	if !ok {
 		writeError(writer, http.StatusNotFound, "路径必须是 /provider/<id>/v1/chat/completions 或 /provider/<id>/v1/responses")
 		return
@@ -146,16 +151,21 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	incomingProtocol = protocolFromPath(protocolPath)
 	upstreamProtocol = route.config.Upstream.Protocol
+	if !route.converter.Supports(incomingProtocol, upstreamProtocol) {
+		failure = fmt.Sprintf("provider %q 不支持 %s -> %s", route.converter.Provider(), incomingProtocol, upstreamProtocol)
+		writeError(writer, http.StatusBadRequest, failure)
+		return
+	}
 	translatedRequest, translatedResponse := incomingProtocol != upstreamProtocol, incomingProtocol != upstreamProtocol
 	upstreamBody := body
 	if translatedRequest {
-		if incomingProtocol == "chat" {
-			upstreamBody, err = convert.ChatRequestToResponses(body, route.config.Defaults.Model)
-		} else {
-			upstreamBody, err = convert.ResponsesRequestToChat(body, route.config.Defaults.Model, convert.Mode(route.config.Conversion.Mode))
-		}
+		upstreamBody, err = route.converter.ConvertRequest(
+			incomingProtocol,
+			upstreamProtocol,
+			body,
+			convert.Options{DefaultModel: route.config.Defaults.Model, Mode: convert.Mode(route.config.Conversion.Mode)},
+		)
 		if err != nil {
 			failure = err.Error()
 			writeError(writer, http.StatusBadRequest, err.Error())
@@ -212,7 +222,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	if !translatedResponse || response.StatusCode >= http.StatusBadRequest {
 		if !stream && response.StatusCode < http.StatusBadRequest && isEventStream(response) {
-			output, conversionErr := aggregateStreamResponse(response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+			output, conversionErr := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
 			if conversionErr != nil {
 				failure = conversionErr.Error()
 				writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+conversionErr.Error())
@@ -231,18 +241,20 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		writer.Header().Set("Cache-Control", "no-cache")
 		writer.Header().Set("Connection", "keep-alive")
 		writer.WriteHeader(response.StatusCode)
-		if incomingProtocol == "chat" {
-			err = convert.ResponsesToChatStream(response.Body, writer, route.config.Conversion.EmitReasoningContent)
-		} else {
-			err = convert.ChatToResponsesStream(response.Body, writer)
-		}
+		err = route.converter.ConvertStream(
+			upstreamProtocol,
+			incomingProtocol,
+			response.Body,
+			writer,
+			convert.Options{EmitReasoning: route.config.Conversion.EmitReasoningContent},
+		)
 		if err != nil {
 			failure = err.Error()
 		}
 		return
 	}
 	if isEventStream(response) {
-		output, err := aggregateStreamResponse(response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+		output, err := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
 		if err != nil {
 			failure = err.Error()
 			writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+err.Error())
@@ -261,7 +273,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if looksLikeSSE(responseBody) {
-		output, err := aggregateStreamResponse(bytes.NewReader(responseBody), incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+		output, err := aggregateStreamResponse(route.converter, bytes.NewReader(responseBody), incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
 		if err != nil {
 			failure = err.Error()
 			writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+err.Error())
@@ -273,11 +285,12 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	var output []byte
-	if incomingProtocol == "chat" {
-		output, err = convert.ResponsesResponseToChat(responseBody)
-	} else {
-		output, err = convert.ChatResponseToResponses(responseBody)
-	}
+	output, err = route.converter.ConvertResponse(
+		upstreamProtocol,
+		incomingProtocol,
+		responseBody,
+		convert.Options{},
+	)
 	if err != nil {
 		failure = err.Error()
 		writeError(writer, http.StatusBadGateway, "转换上游响应失败: "+err.Error())
@@ -288,17 +301,13 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	_, _ = writer.Write(output)
 }
 
-func aggregateStreamResponse(reader io.Reader, incomingProtocol, upstreamProtocol string, emitReasoning bool) ([]byte, error) {
-	switch {
-	case incomingProtocol == "chat" && upstreamProtocol == "responses":
-		return convert.ResponsesStreamToChatResponse(reader, emitReasoning)
-	case incomingProtocol == "responses" && upstreamProtocol == "chat":
-		return convert.ChatStreamToResponsesResponse(reader)
-	case upstreamProtocol == "responses":
-		return convert.ResponsesStreamToResponse(reader)
-	default:
-		return convert.ChatStreamToResponse(reader)
-	}
+func aggregateStreamResponse(converter convert.Converter, reader io.Reader, incomingProtocol, upstreamProtocol convert.Protocol, emitReasoning bool) ([]byte, error) {
+	return converter.AggregateStream(
+		upstreamProtocol,
+		incomingProtocol,
+		reader,
+		convert.Options{EmitReasoning: emitReasoning},
+	)
 }
 
 func isEventStream(response *http.Response) bool {
@@ -367,29 +376,22 @@ func newHTTPClient(upstream config.Upstream) (*http.Client, error) {
 	return &http.Client{Transport: transport, Timeout: timeout}, nil
 }
 
-func parseAPIPath(path string) (string, string, bool) {
+func parseAPIPath(path string) (string, convert.Protocol, bool) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) < 4 || parts[0] != "provider" || parts[2] != "v1" {
 		return "", "", false
 	}
 	if len(parts) == 5 && parts[3] == "chat" && parts[4] == "completions" {
-		return parts[1], "/v1/chat/completions", true
+		return parts[1], convert.ProtocolChatCompletions, true
 	}
 	if len(parts) == 4 && parts[3] == "responses" {
-		return parts[1], "/v1/responses", true
+		return parts[1], convert.ProtocolResponses, true
 	}
 	return "", "", false
 }
 
-func protocolFromPath(path string) string {
-	if strings.Contains(path, "/chat/") {
-		return "chat"
-	}
-	return "responses"
-}
-
-func upstreamProtocolPath(protocol string) string {
-	if protocol == "chat" {
+func upstreamProtocolPath(protocol convert.Protocol) string {
+	if protocol == convert.ProtocolChatCompletions {
 		return "chat/completions"
 	}
 	return "responses"

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaming/ai-xyz/ai-gateway/convert"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -41,14 +42,14 @@ type Auth struct {
 
 // Upstream 定义上游协议、地址、鉴权和可选 HTTP 代理。
 type Upstream struct {
-	Provider     string        `yaml:"provider"`
-	Protocol     string        `yaml:"protocol"`
-	BaseURL      string        `yaml:"base_url"`
-	Token        string        `yaml:"token"`
-	TokenEnv     string        `yaml:"token_env"`
-	Proxy        string        `yaml:"proxy"`
-	Timeout      time.Duration `yaml:"timeout"`
-	Capabilities []string      `yaml:"capabilities"`
+	Provider     string           `yaml:"provider"`
+	Protocol     convert.Protocol `yaml:"protocol"`
+	BaseURL      string           `yaml:"base_url"`
+	Token        string           `yaml:"token"`
+	TokenEnv     string           `yaml:"token_env"`
+	Proxy        string           `yaml:"proxy"`
+	Timeout      time.Duration    `yaml:"timeout"`
+	Capabilities []string         `yaml:"capabilities"`
 }
 
 // Defaults 是请求级默认值。
@@ -112,10 +113,10 @@ func (cfg *Config) Validate() error {
 		}
 		seen[route.ID] = struct{}{}
 
-		if route.Upstream.Protocol != "responses" && route.Upstream.Protocol != "chat" {
+		if route.Upstream.Protocol != convert.ProtocolResponses && route.Upstream.Protocol != convert.ProtocolChatCompletions {
 			return fmt.Errorf("route %q 的 upstream.protocol 必须是 responses 或 chat", route.ID)
 		}
-		if route.Upstream.Provider == "deepseek" && route.Upstream.Protocol != "chat" {
+		if route.Upstream.Provider == "deepseek" && route.Upstream.Protocol != convert.ProtocolChatCompletions {
 			return fmt.Errorf("route %q 的 deepseek upstream.protocol 必须是 chat", route.ID)
 		}
 		if route.Upstream.BaseURL == "" {

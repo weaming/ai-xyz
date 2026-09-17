@@ -76,6 +76,22 @@ func TestChatRequestToResponsesUsesOutputTextForAssistantContent(t *testing.T) {
 	assertContentType(2, "output_text")
 }
 
+func TestDefaultRegistryProvidesProviderConverters(t *testing.T) {
+	registry := DefaultRegistry()
+	for _, provider := range []string{"openai", "deepseek"} {
+		converter, err := registry.ForProvider(provider)
+		if err != nil {
+			t.Fatalf("provider %q: %v", provider, err)
+		}
+		if converter.Provider() != provider {
+			t.Fatalf("converter provider = %q, want %q", converter.Provider(), provider)
+		}
+		if !converter.Supports(ProtocolChatCompletions, ProtocolResponses) {
+			t.Fatalf("provider %q does not support Chat -> Responses", provider)
+		}
+	}
+}
+
 func TestResponsesRequestToChatPreservesToolPair(t *testing.T) {
 	input := []byte(`{"model":"m","instructions":"be concise","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"run"}]},{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
 	output, err := ResponsesRequestToChat(input, "", ModePreserve)
