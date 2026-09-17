@@ -32,6 +32,8 @@ routes:
       emit_reasoning_content: true
 ```
 
+省略 `conversion` 或其中字段时，默认使用 `mode: preserve` 和 `emit_reasoning_content: true`；如需关闭 reasoning content，可显式设置 `emit_reasoning_content: false`。
+
 `routes[].id` 只能包含字母、数字、`.`、`_`、`-`，并且必须唯一。以上配置提供：
 
 - `POST /provider/codex/v1/responses`

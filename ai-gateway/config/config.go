@@ -63,6 +63,37 @@ type Conversion struct {
 	EmitReasoningContent bool   `yaml:"emit_reasoning_content"`
 }
 
+func defaultConversion() Conversion {
+	return Conversion{
+		Mode:                 "preserve",
+		EmitReasoningContent: true,
+	}
+}
+
+// UnmarshalYAML 使用兼容协议的默认转换配置。
+func (conversion *Conversion) UnmarshalYAML(node *yaml.Node) error {
+	type conversionAlias Conversion
+	defaults := conversionAlias(defaultConversion())
+	if err := node.Decode(&defaults); err != nil {
+		return err
+	}
+	*conversion = Conversion(defaults)
+	return nil
+}
+
+// UnmarshalYAML 确保省略 conversion 配置时也应用默认值。
+func (route *Route) UnmarshalYAML(node *yaml.Node) error {
+	type routeAlias Route
+	defaults := routeAlias{
+		Conversion: defaultConversion(),
+	}
+	if err := node.Decode(&defaults); err != nil {
+		return err
+	}
+	*route = Route(defaults)
+	return nil
+}
+
 var routeIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // Load 从 YAML 文件加载配置，并展开进程环境变量。
