@@ -76,6 +76,50 @@ func TestChatRequestToResponsesUsesOutputTextForAssistantContent(t *testing.T) {
 	assertContentType(2, "output_text")
 }
 
+func TestChatRequestToResponsesConvertsImageURL(t *testing.T) {
+	input := []byte(`{"model":"m","messages":[{"role":"user","content":[{"type":"text","text":"describe"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abc","detail":"low"}}]}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+
+	content := value["input"].([]any)[0].(map[string]any)["content"].([]any)
+	image := content[1].(map[string]any)
+	if image["type"] != "input_image" {
+		t.Fatalf("image type = %#v", image["type"])
+	}
+	if image["image_url"] != "data:image/png;base64,abc" {
+		t.Fatalf("image URL = %#v", image["image_url"])
+	}
+	if image["detail"] != "low" {
+		t.Fatalf("image detail = %#v", image["detail"])
+	}
+}
+
+func TestChatRequestToResponsesOmitsEmptyImageDetail(t *testing.T) {
+	input := []byte(`{"model":"m","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}]}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+
+	content := value["input"].([]any)[0].(map[string]any)["content"].([]any)
+	image := content[0].(map[string]any)
+	if _, exists := image["detail"]; exists {
+		t.Fatalf("empty image detail should be omitted: %#v", image)
+	}
+}
+
 func TestDefaultRegistryProvidesProviderConverters(t *testing.T) {
 	registry := DefaultRegistry()
 	for _, provider := range []string{"openai", "deepseek"} {

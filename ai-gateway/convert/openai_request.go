@@ -199,7 +199,15 @@ func chatContentToResponses(raw json.RawMessage, role string) ([]map[string]any,
 			if url == "" {
 				url = stringValue(image["url"])
 			}
-			result = append(result, map[string]any{"type": "input_image", "image_url": url, "detail": stringValue(part["detail"])})
+			detail := stringValue(part["detail"])
+			if detail == "" {
+				detail = stringValue(image["detail"])
+			}
+			imagePart := map[string]any{"type": "input_image", "image_url": url}
+			if detail != "" {
+				imagePart["detail"] = detail
+			}
+			result = append(result, imagePart)
 		case "input_file", "file":
 			result = append(result, rawMapToAny(part))
 		default:
