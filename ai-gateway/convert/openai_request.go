@@ -239,7 +239,40 @@ func validateChatRequest(source map[string]json.RawMessage) error {
 	if hasJSONValue(source["audio"]) || hasAudioModality(source["modalities"]) {
 		return fmt.Errorf("Chat -> Responses 暂不支持音频输出")
 	}
-	return rejectFields(source, "Chat -> Responses", "functions", "function_call", "stream_options", "seed", "logit_bias", "user", "prediction")
+	if err := validateChatStreamOptions(source["stream_options"]); err != nil {
+		return err
+	}
+	return rejectFields(source, "Chat -> Responses", "functions", "function_call", "seed", "logit_bias", "user", "prediction")
+}
+
+// validateChatStreamOptions 校验 Chat 的流式 usage 选项是否能由 Responses 表达。
+func validateChatStreamOptions(raw json.RawMessage) error {
+	if !hasJSONValue(raw) {
+		return nil
+	}
+
+	var options map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &options); err != nil || options == nil {
+		return fmt.Errorf("Chat -> Responses 的 stream_options 必须是 JSON 对象")
+	}
+	for field := range options {
+		if field != "include_usage" {
+			return fmt.Errorf("Chat -> Responses 的 stream_options 不支持字段 %q，避免静默丢失语义", field)
+		}
+	}
+
+	includeUsage, exists := options["include_usage"]
+	if !exists {
+		return nil
+	}
+	var enabled bool
+	if err := json.Unmarshal(includeUsage, &enabled); err != nil {
+		return fmt.Errorf("Chat -> Responses 的 stream_options.include_usage 必须是布尔值")
+	}
+	if !enabled {
+		return fmt.Errorf("Chat -> Responses 不支持 stream_options.include_usage=false：Responses 始终返回 usage")
+	}
+	return nil
 }
 
 func validateResponsesRequest(source map[string]json.RawMessage) error {

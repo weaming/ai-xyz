@@ -29,6 +29,49 @@ func TestChatRequestToResponses(t *testing.T) {
 	}
 }
 
+func TestChatRequestToResponsesAcceptsStreamOptionsIncludeUsage(t *testing.T) {
+	input := []byte(`{"model":"m","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := value["stream_options"]; exists {
+		t.Fatalf("stream_options should not be sent to Responses: %#v", value["stream_options"])
+	}
+}
+
+func TestChatRequestToResponsesRejectsUnsupportedStreamOptions(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "disabled usage",
+			input: `{"stream_options":{"include_usage":false},"messages":[{"role":"user","content":"hello"}]}`,
+			want:  "include_usage=false",
+		},
+		{
+			name:  "unknown field",
+			input: `{"stream_options":{"unknown":true},"messages":[{"role":"user","content":"hello"}]}`,
+			want:  `stream_options 不支持字段 "unknown"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ChatRequestToResponses([]byte(test.input), "")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestChatRequestToResponsesNormalizesNullContent(t *testing.T) {
 	input := []byte(`{"model":"m","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"shell","arguments":"{}"}}]}]}`)
 	output, err := ChatRequestToResponses(input, "")
