@@ -1,4 +1,5 @@
 mod apply_patch;
+mod web_search;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -34,7 +35,13 @@ impl ServerHandler for McpServer {
         _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        async { Ok(ListToolsResult::with_all_items(vec![apply_patch::tool()])) }
+        async {
+            Ok(ListToolsResult::with_all_items(
+                std::iter::once(apply_patch::tool())
+                    .chain(web_search::tools())
+                    .collect(),
+            ))
+        }
     }
 
     async fn call_tool(
@@ -47,6 +54,9 @@ impl ServerHandler for McpServer {
 
         match name.as_ref() {
             apply_patch::NAME => apply_patch::call(arguments).await,
+            web_search::NAME | "web_open" | "web_find" | "web_click" => {
+                web_search::call_named(name.as_ref(), arguments).await
+            }
             _ => Err(McpError::invalid_params(
                 format!("unknown tool: {name}"),
                 None,
