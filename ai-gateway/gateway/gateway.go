@@ -81,12 +81,16 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	stream := false
 	var failure string
 	defer func() {
+		protocolConverted := incomingProtocol != "" &&
+			upstreamProtocol != "" &&
+			incomingProtocol != upstreamProtocol
 		attrs := []any{
 			"method", request.Method,
 			"path", request.URL.Path,
 			"route", routeID,
 			"incoming_protocol", incomingProtocol,
 			"upstream_protocol", upstreamProtocol,
+			"protocol_converted", protocolConverted,
 			"stream", stream,
 			"status", observedWriter.statusCode,
 			"duration_ms", time.Since(startedAt).Milliseconds(),

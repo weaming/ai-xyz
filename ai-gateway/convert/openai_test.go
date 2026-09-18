@@ -29,6 +29,49 @@ func TestChatRequestToResponses(t *testing.T) {
 	}
 }
 
+func TestChatRequestToResponsesKeepsAppendOnlyInputPrefix(t *testing.T) {
+	baseInput := []byte(`{"model":"m","temperature":0.2,"messages":[{"role":"system","content":"be concise"},{"role":"user","content":"first"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"done"}]}`)
+	extendedInput := []byte(`{"model":"m","temperature":0.2,"messages":[{"role":"system","content":"be concise"},{"role":"user","content":"first"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"done"},{"role":"user","content":"second"}]}`)
+
+	baseOutput, err := ChatRequestToResponses(baseInput, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	extendedOutput, err := ChatRequestToResponses(extendedInput, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var baseValue map[string]json.RawMessage
+	if err := json.Unmarshal(baseOutput, &baseValue); err != nil {
+		t.Fatal(err)
+	}
+	var extendedValue map[string]json.RawMessage
+	if err := json.Unmarshal(extendedOutput, &extendedValue); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(baseValue["instructions"], extendedValue["instructions"]) {
+		t.Fatalf("instructions changed: base=%s extended=%s", baseValue["instructions"], extendedValue["instructions"])
+	}
+
+	var baseItems []json.RawMessage
+	if err := json.Unmarshal(baseValue["input"], &baseItems); err != nil {
+		t.Fatal(err)
+	}
+	var extendedItems []json.RawMessage
+	if err := json.Unmarshal(extendedValue["input"], &extendedItems); err != nil {
+		t.Fatal(err)
+	}
+	if len(extendedItems) != len(baseItems)+1 {
+		t.Fatalf("input length: base=%d extended=%d", len(baseItems), len(extendedItems))
+	}
+	for index, baseItem := range baseItems {
+		if !bytes.Equal(baseItem, extendedItems[index]) {
+			t.Fatalf("input item %d changed: base=%s extended=%s", index, baseItem, extendedItems[index])
+		}
+	}
+}
+
 func TestChatRequestToResponsesAcceptsStreamOptionsIncludeUsage(t *testing.T) {
 	input := []byte(`{"model":"m","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
 	output, err := ChatRequestToResponses(input, "")
