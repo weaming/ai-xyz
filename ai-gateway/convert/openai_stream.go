@@ -15,24 +15,36 @@ import (
 
 func responsesToChatStream(reader io.Reader, writer io.Writer, emitReasoning bool) error {
 	state := newStreamState()
-	return ReadSSE(reader, func(frame SSEFrame) error {
+	if err := ReadSSE(reader, func(frame SSEFrame) error {
 		frames, err := state.responsesFrameToChat(frame, emitReasoning)
 		if err != nil {
 			return err
 		}
 		return writeFrames(writer, frames)
-	})
+	}); err != nil {
+		return err
+	}
+	if !state.completed {
+		return fmt.Errorf("Responses SSE 在终止事件前结束")
+	}
+	return nil
 }
 
 func chatToResponsesStream(reader io.Reader, writer io.Writer) error {
 	state := newStreamState()
-	return ReadSSE(reader, func(frame SSEFrame) error {
+	if err := ReadSSE(reader, func(frame SSEFrame) error {
 		frames, err := state.chatFrameToResponses(frame)
 		if err != nil {
 			return err
 		}
 		return writeFrames(writer, frames)
-	})
+	}); err != nil {
+		return err
+	}
+	if !state.completed {
+		return fmt.Errorf("Chat SSE 缺少 [DONE] 终止标记")
+	}
+	return nil
 }
 
 func responsesStreamToResponse(reader io.Reader) ([]byte, error) {
@@ -72,6 +84,7 @@ type responsesStreamState struct {
 	items     map[int]map[string]any
 	itemByID  map[string]int
 	nextIndex int
+	terminal  bool
 }
 
 func newResponsesStreamState() *responsesStreamState {
@@ -95,10 +108,13 @@ func (state *responsesStreamState) consume(frame SSEFrame) error {
 	}
 	switch eventType {
 	case "response.created", "response.in_progress", "response.completed", "response.failed", "response.incomplete":
-		if response := rawToAny(data["response"]); response != nil {
-			if value, ok := response.(map[string]any); ok {
-				state.payload = value
-			}
+		isTerminal := eventType == "response.completed" || eventType == "response.failed" || eventType == "response.incomplete"
+		if isTerminal {
+			state.terminal = true
+		}
+		response, _ := rawToAny(data["response"]).(map[string]any)
+		if isTerminal || response != nil {
+			state.payload = response
 		}
 	case "response.output_item.added", "response.output_item.done":
 		state.setItem(data["item"], int(intValue(data["output_index"])))
@@ -111,9 +127,15 @@ func (state *responsesStreamState) consume(frame SSEFrame) error {
 	case "response.function_call_arguments.delta":
 		item := state.item(data, "function_call")
 		item["arguments"] = stringValueAny(item["arguments"]) + stringValue(data["delta"])
+	case "response.function_call_arguments.done":
+		item := state.item(data, "function_call")
+		item["arguments"] = stringValue(data["arguments"])
 	case "response.custom_tool_call_input.delta":
 		item := state.item(data, "custom_tool_call")
 		item["input"] = stringValueAny(item["input"]) + stringValue(data["delta"])
+	case "response.custom_tool_call_input.done":
+		item := state.item(data, "custom_tool_call")
+		item["input"] = stringValue(data["input"])
 	}
 	if isUnsupportedResponsesStreamEvent(eventType) {
 		return fmt.Errorf("Responses 聚合暂不支持 stream event %q", eventType)
@@ -170,6 +192,9 @@ func (state *responsesStreamState) item(data map[string]json.RawMessage, itemTyp
 }
 
 func (state *responsesStreamState) response() ([]byte, error) {
+	if !state.terminal {
+		return nil, fmt.Errorf("Responses SSE 在终止事件前结束")
+	}
 	if state.payload == nil {
 		return nil, fmt.Errorf("Responses SSE 缺少完成响应")
 	}
@@ -210,6 +235,7 @@ type chatStreamState struct {
 	id        string
 	model     string
 	created   int64
+	done      bool
 	content   strings.Builder
 	refusal   strings.Builder
 	finish    string
@@ -231,6 +257,7 @@ func newChatStreamState() *chatStreamState {
 
 func (state *chatStreamState) consume(frame SSEFrame) error {
 	if frame.Data == "[DONE]" {
+		state.done = true
 		return nil
 	}
 	data, err := rawMap(frame.Data)
@@ -288,6 +315,9 @@ func (state *chatStreamState) consume(frame SSEFrame) error {
 }
 
 func (state *chatStreamState) response() ([]byte, error) {
+	if !state.done {
+		return nil, fmt.Errorf("Chat SSE 缺少 [DONE] 终止标记")
+	}
 	message := map[string]any{"role": "assistant", "content": nil}
 	if state.content.Len() > 0 {
 		message["content"] = state.content.String()
@@ -359,13 +389,17 @@ type streamState struct {
 }
 
 type streamTool struct {
-	itemID      string
-	callID      string
-	kind        string
-	name        string
-	arguments   strings.Builder
-	input       strings.Builder
-	outputIndex int
+	itemID             string
+	callID             string
+	kind               string
+	name               string
+	arguments          strings.Builder
+	input              strings.Builder
+	argumentsDeltaSeen bool
+	inputDeltaSeen     bool
+	argumentsFinalized bool
+	inputFinalized     bool
+	outputIndex        int
 }
 
 func newStreamState() *streamState {
@@ -417,13 +451,44 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 			return nil, fmt.Errorf("Responses 工具增量缺少可识别的 output item")
 		}
 		delta := stringValue(data["delta"])
+		if tool.kind == "custom" {
+			tool.inputDeltaSeen = true
+		} else {
+			tool.argumentsDeltaSeen = true
+		}
 		call := toolCallChunk(state, tool, delta)
 		return []SSEFrame{{Data: mustJSONString(chatChunk(state, nil, []any{call}, ""))}}, nil
+	case "response.function_call_arguments.done":
+		tool := state.responseTool(data)
+		if tool == nil {
+			return nil, fmt.Errorf("Responses function arguments.done 缺少可识别的 output item")
+		}
+		return state.responseToolFinal(tool, stringValue(data["arguments"])), nil
+	case "response.custom_tool_call_input.done":
+		tool := state.responseTool(data)
+		if tool == nil {
+			return nil, fmt.Errorf("Responses custom tool input.done 缺少可识别的 output item")
+		}
+		return state.responseToolFinal(tool, stringValue(data["input"])), nil
+	case "response.output_item.done":
+		item := objectMap(data["item"])
+		itemType := stringValue(item["type"])
+		if itemType == "function_call" || itemType == "custom_tool_call" {
+			tool := state.addResponseTool(item, int(intValue(data["output_index"])))
+			field := "arguments"
+			if itemType == "custom_tool_call" {
+				field = "input"
+			}
+			return state.responseToolFinal(tool, stringValue(item[field])), nil
+		}
+		return nil, nil
 	case "response.completed":
 		response := objectMap(data["response"])
 		state.setResponse(response)
 		return state.completeChat(false), nil
 	case "response.failed", "response.incomplete":
+		response := objectMap(data["response"])
+		state.setResponse(response)
 		return state.completeChat(true), nil
 	default:
 		if isUnsupportedResponsesStreamEvent(eventType) {
@@ -431,6 +496,22 @@ func (state *streamState) responsesFrameToChat(frame SSEFrame, emitReasoning boo
 		}
 		return nil, nil
 	}
+}
+
+func (state *streamState) responseToolFinal(tool *streamTool, value string) []SSEFrame {
+	if tool.kind == "custom" {
+		if tool.inputDeltaSeen || tool.inputFinalized {
+			return nil
+		}
+		tool.inputFinalized = true
+	} else {
+		if tool.argumentsDeltaSeen || tool.argumentsFinalized {
+			return nil
+		}
+		tool.argumentsFinalized = true
+	}
+	call := toolCallChunk(state, tool, value)
+	return []SSEFrame{{Data: mustJSONString(chatChunk(state, nil, []any{call}, ""))}}
 }
 
 func (state *streamState) chatFrameToResponses(frame SSEFrame) ([]SSEFrame, error) {

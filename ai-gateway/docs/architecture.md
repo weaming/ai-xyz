@@ -73,3 +73,5 @@
 4. 保持 item 顺序；Chat 没有对应结构时只做明确的 projection。
 5. 未知事件可以保留为 opaque，但不得把未知事件当成完成事件。
 6. 转换状态只属于一次请求，不能跨请求复用；未来若支持 `previous_response_id`，需要增加可持久化 conversation store。
+7. 流聚合必须读到 Chat `[DONE]` 或 Responses `completed`、`failed`、`incomplete` 终态；EOF 不能作为成功完成。
+8. 工具结果按 `call_id` 关联原调用；custom tool 结果通过 `tool_call_type: custom` 保留类型，流式参数优先使用 delta，缺失时从 done item 补齐。

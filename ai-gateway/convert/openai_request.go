@@ -36,7 +36,16 @@ func convertChatRequestToResponses(input []byte, defaultModel string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("解析 Chat messages: %w", err)
 	}
-	inputItems, instructions, err := chatMessagesToResponses(messages)
+	customToolNames := make(map[string]struct{})
+	for _, tool := range rawList(source["tools"]) {
+		if stringValue(tool["type"]) == "custom" {
+			custom := objectMap(tool["custom"])
+			if name := stringValue(custom["name"]); name != "" {
+				customToolNames[name] = struct{}{}
+			}
+		}
+	}
+	inputItems, instructions, err := chatMessagesToResponses(messages, customToolNames)
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +117,10 @@ func convertResponsesRequestToChat(input []byte, defaultModel string, mode Mode)
 	return json.Marshal(target)
 }
 
-func chatMessagesToResponses(messages []map[string]json.RawMessage) ([]map[string]any, []string, error) {
+func chatMessagesToResponses(messages []map[string]json.RawMessage, customToolNames map[string]struct{}) ([]map[string]any, []string, error) {
 	items := []map[string]any{}
 	instructions := []string{}
+	toolKinds := make(map[string]string)
 	for _, message := range messages {
 		role := stringValue(message["role"])
 		content, err := chatContentToResponses(message["content"], role)
@@ -125,7 +135,20 @@ func chatMessagesToResponses(messages []map[string]json.RawMessage) ([]map[strin
 			}
 			items = append(items, map[string]any{"type": "message", "role": role, "content": content})
 		case "tool":
-			items = append(items, map[string]any{"type": "function_call_output", "call_id": stringValue(message["tool_call_id"]), "output": responseOutputFromChatContent(content)})
+			callID := stringValue(message["tool_call_id"])
+			toolType := stringValue(message["tool_call_type"])
+			if toolType != "" && toolType != "function" && toolType != "custom" {
+				return nil, nil, fmt.Errorf("Chat tool_call_type %q 无法转换为 Responses", toolType)
+			}
+			if toolType == "" && toolKinds[callID] == "custom_tool_call" {
+				toolType = "custom"
+			}
+			outputType := "function_call_output"
+			if toolType == "custom" {
+				outputType = "custom_tool_call_output"
+			}
+			output := responseOutputFromChatContent(content)
+			items = append(items, map[string]any{"type": outputType, "call_id": callID, "output": output})
 		default:
 			item := map[string]any{"type": "message", "role": role, "content": content}
 			if name := stringValue(message["name"]); name != "" {
@@ -134,9 +157,12 @@ func chatMessagesToResponses(messages []map[string]json.RawMessage) ([]map[strin
 			items = append(items, item)
 		}
 		for _, call := range rawList(message["tool_calls"]) {
-			item, err := chatToolCallToResponses(call)
+			item, err := chatToolCallToResponses(call, customToolNames)
 			if err != nil {
 				return nil, nil, err
+			}
+			if callID := stringValue(call["id"]); callID != "" {
+				toolKinds[callID] = stringValueAny(item["type"])
 			}
 			items = append(items, item)
 		}
@@ -178,6 +204,12 @@ func responsesItemsToChatMessages(items []map[string]json.RawMessage, mode Mode)
 				return nil, err
 			}
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": stringValue(item["call_id"]), "content": output})
+		case "custom_tool_call_output":
+			output, err := responseToolOutputToChat(item["output"])
+			if err != nil {
+				return nil, err
+			}
+			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": stringValue(item["call_id"]), "tool_call_type": "custom", "content": output})
 		case "reasoning":
 			if stringValue(item["encrypted_content"]) != "" {
 				return nil, fmt.Errorf("Chat Completions 无法表达加密 reasoning")
@@ -376,12 +408,16 @@ func responsesTextToChat(raw json.RawMessage) (json.RawMessage, error) {
 	return mustJSON(result), nil
 }
 
-func chatToolCallToResponses(call map[string]json.RawMessage) (map[string]any, error) {
+func chatToolCallToResponses(call map[string]json.RawMessage, customToolNames map[string]struct{}) (map[string]any, error) {
 	callType := stringValue(call["type"])
 	callID := stringValue(call["id"])
 	switch callType {
 	case "", "function":
 		function := objectMap(call["function"])
+		name := stringValue(function["name"])
+		if _, isCustom := customToolNames[name]; isCustom {
+			return map[string]any{"type": "custom_tool_call", "call_id": callID, "name": name, "input": stringValue(function["arguments"])}, nil
+		}
 		return map[string]any{"type": "function_call", "call_id": callID, "name": stringValue(function["name"]), "arguments": stringValue(function["arguments"])}, nil
 	case "custom":
 		custom := objectMap(call["custom"])
