@@ -1,2 +1,7 @@
-ai-models/ai-models
-ai-sessions/ai-sessions
+# Go 编译产物
+/ai-gateway/ai-gateway
+/ai-models/ai-models
+/ai-sessions/ai-sessions
+
+# Rust 编译产物
+target/
