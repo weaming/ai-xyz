@@ -25,6 +25,15 @@ struct Args {
     )]
     upstream_url: String,
 
+    #[arg(long, default_value = "https://chatgpt.com/backend-api/wham/usage")]
+    usage_url: String,
+
+    #[arg(
+        long,
+        default_value = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+    )]
+    reset_credits_url: String,
+
     #[arg(long, value_name = "URL")]
     proxy_url: Option<String>,
 
@@ -53,6 +62,8 @@ fn main() -> Result<()> {
         bind,
         port: args.port,
         upstream_url: args.upstream_url,
+        usage_url: args.usage_url,
+        reset_credits_url: args.reset_credits_url,
         client,
         auth,
         inbound_token,

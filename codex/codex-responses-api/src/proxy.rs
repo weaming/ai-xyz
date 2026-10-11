@@ -14,21 +14,38 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use url::Url;
 
 use crate::auth::{AuthConfig, AuthState};
+use crate::usage::fetch_usage;
 
 const RESPONSE_PATH: &str = "/v1/responses";
+const USAGE_PATH: &str = "/v1/usage";
 
 pub struct ProxyConfig {
     pub bind: IpAddr,
     pub port: u16,
     pub upstream_url: String,
+    pub usage_url: String,
+    pub reset_credits_url: String,
     pub client: Client,
     pub auth: AuthConfig,
     pub inbound_token: Option<String>,
     pub server_info: Option<PathBuf>,
 }
 
+struct RequestContext {
+    client: Arc<Client>,
+    upstream_url: Arc<Url>,
+    usage_url: Arc<Url>,
+    reset_credits_url: Arc<Url>,
+    host_header: Arc<HeaderValue>,
+    auth: Arc<AuthState>,
+    inbound_token: Option<Arc<Vec<u8>>>,
+}
+
 pub fn run(config: ProxyConfig) -> Result<()> {
     let upstream_url = Url::parse(&config.upstream_url).context("解析 --upstream-url 失败")?;
+    let usage_url = Url::parse(&config.usage_url).context("解析 --usage-url 失败")?;
+    let reset_credits_url =
+        Url::parse(&config.reset_credits_url).context("解析 --reset-credits-url 失败")?;
     let host = upstream_host(&upstream_url)?;
     let host_header = HeaderValue::from_str(&host).context("构造上游 Host 头失败")?;
     let auth = Arc::new(AuthState::load(config.auth)?);
@@ -44,27 +61,28 @@ pub fn run(config: ProxyConfig) -> Result<()> {
     if let Some(path) = config.server_info.as_deref() {
         write_server_info(path, bound_addr.port())?;
     }
-    eprintln!("codex-responses-api listening on http://{bound_addr}{RESPONSE_PATH}");
+    eprintln!(
+        "codex-responses-api listening on http://{bound_addr}{RESPONSE_PATH} and http://{bound_addr}{USAGE_PATH}"
+    );
 
     let client = Arc::new(config.client);
     let upstream_url = Arc::new(upstream_url);
+    let usage_url = Arc::new(usage_url);
+    let reset_credits_url = Arc::new(reset_credits_url);
     let host_header = Arc::new(host_header);
 
     for request in server.incoming_requests() {
-        let client = Arc::clone(&client);
-        let upstream_url = Arc::clone(&upstream_url);
-        let host_header = Arc::clone(&host_header);
-        let auth = Arc::clone(&auth);
-        let inbound_token = inbound_token.clone();
+        let context = RequestContext {
+            client: Arc::clone(&client),
+            upstream_url: Arc::clone(&upstream_url),
+            usage_url: Arc::clone(&usage_url),
+            reset_credits_url: Arc::clone(&reset_credits_url),
+            host_header: Arc::clone(&host_header),
+            auth: Arc::clone(&auth),
+            inbound_token: inbound_token.clone(),
+        };
         std::thread::spawn(move || {
-            if let Err(error) = handle_request(
-                client,
-                upstream_url,
-                host_header,
-                auth,
-                inbound_token,
-                request,
-            ) {
+            if let Err(error) = handle_request(context, request) {
                 eprintln!("处理请求失败: {error}");
             }
         });
@@ -73,24 +91,39 @@ pub fn run(config: ProxyConfig) -> Result<()> {
     Err(anyhow!("HTTP 服务意外停止"))
 }
 
-fn handle_request(
-    client: Arc<Client>,
-    upstream_url: Arc<Url>,
-    host_header: Arc<HeaderValue>,
-    auth: Arc<AuthState>,
-    inbound_token: Option<Arc<Vec<u8>>>,
-    request: Request,
-) -> Result<()> {
+fn handle_request(context: RequestContext, request: Request) -> Result<()> {
     if !is_authorized(
         &request,
-        inbound_token.as_ref().map(|token| token.as_slice()),
+        context.inbound_token.as_ref().map(|token| token.as_slice()),
     ) {
         respond_error(request, StatusCode(401), "代理鉴权失败", true);
         return Ok(());
     }
 
+    if request.method() == &Method::Get && request.url() == USAGE_PATH {
+        let response = match fetch_usage(
+            context.client.as_ref(),
+            context.auth.as_ref(),
+            context.usage_url.as_ref(),
+            context.reset_credits_url.as_ref(),
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                respond_error(request, StatusCode(502), "读取 Codex 用量失败", false);
+                return Err(error).context("读取 Codex 用量失败");
+            }
+        };
+        respond_json(request, &response)?;
+        return Ok(());
+    }
+
     if request.method() != &Method::Post || request.url() != RESPONSE_PATH {
-        respond_error(request, StatusCode(404), "只支持 POST /v1/responses", false);
+        respond_error(
+            request,
+            StatusCode(404),
+            "只支持 GET /v1/usage 或 POST /v1/responses",
+            false,
+        );
         return Ok(());
     }
 
@@ -112,16 +145,17 @@ fn handle_request(
             return Err(error);
         }
     };
-    let auth_headers = match auth.auth_headers() {
+    let auth_headers = match context.auth.auth_headers() {
         Ok(headers) => headers,
         Err(error) => {
             respond_error(request, StatusCode(502), "读取 ChatGPT 登录凭证失败", false);
             return Err(error).context("读取 ChatGPT 登录凭证失败");
         }
     };
-    let headers = forward_headers(&request, &auth_headers, &host_header);
-    let upstream_response = match client
-        .post(upstream_url.as_ref().clone())
+    let headers = forward_headers(&request, &auth_headers, &context.host_header);
+    let upstream_response = match context
+        .client
+        .post(context.upstream_url.as_ref().clone())
         .headers(headers)
         .body(body)
         .send()
@@ -223,6 +257,15 @@ fn respond_upstream(request: Request, upstream: UpstreamResponse) -> Result<()> 
         None,
     );
     request.respond(response).map_err(Into::into)
+}
+
+fn respond_json<T: serde::Serialize>(request: Request, value: &T) -> Result<()> {
+    let body = serde_json::to_string(value).context("序列化 JSON 响应失败")?;
+    let content_type = Header::from_bytes(b"Content-Type", b"application/json")
+        .map_err(|error| anyhow!("构造 JSON Content-Type 失败: {error:?}"))?;
+    request
+        .respond(Response::from_string(body).with_header(content_type))
+        .map_err(Into::into)
 }
 
 fn respond_error(request: Request, status: StatusCode, message: &str, unauthorized: bool) {
