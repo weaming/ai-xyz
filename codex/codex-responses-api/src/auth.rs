@@ -30,6 +30,12 @@ pub struct AuthState {
     state: Mutex<StoredAuth>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AuthFileFingerprint {
+    modified_at: SystemTime,
+    length: u64,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct StoredTokens {
     id_token: String,
@@ -44,6 +50,7 @@ struct StoredAuth {
     tokens: StoredTokens,
     account_id: Option<String>,
     is_fedramp: bool,
+    file_fingerprint: AuthFileFingerprint,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,37 +77,9 @@ struct RefreshResponse {
 
 impl AuthState {
     pub fn load(config: AuthConfig) -> Result<Self> {
-        let content = fs::read_to_string(&config.auth_file)
-            .with_context(|| format!("读取 Codex 认证文件失败: {}", config.auth_file.display()))?;
-        let raw: Value = serde_json::from_str(&content)
-            .with_context(|| format!("认证文件不是有效 JSON: {}", config.auth_file.display()))?;
-        if !raw.is_object() {
-            bail!("认证文件顶层必须是 JSON 对象");
-        }
-
-        let has_api_key = raw
-            .get("OPENAI_API_KEY")
-            .is_some_and(|value| !value.is_null());
-        let is_api_key_mode = raw
-            .get("auth_mode")
-            .and_then(Value::as_str)
-            .is_some_and(|mode| {
-                mode.eq_ignore_ascii_case("api_key") || mode.eq_ignore_ascii_case("apikey")
-            });
-        if has_api_key || is_api_key_mode {
-            bail!("认证文件是 API key 模式；此代理只支持 ChatGPT 登录 tokens");
-        }
-
-        let tokens_value = raw
-            .get("tokens")
-            .context("认证文件缺少 tokens，当前只支持 ChatGPT 网页登录")?;
-        let tokens: StoredTokens = serde_json::from_value(tokens_value.clone())
-            .context("认证文件中的 tokens 字段格式不完整")?;
-        let (account_id, is_fedramp) = parse_account_claims(&tokens.id_token)?;
-        let account_id = tokens.account_id.clone().or(account_id);
-        if account_id.is_none() {
-            bail!("认证文件中的 token 缺少 account_id");
-        }
+        let (raw, tokens, account_id, is_fedramp) = read_auth_file(&config.auth_file)?;
+        let file_fingerprint = auth_file_fingerprint(&config.auth_file)
+            .with_context(|| format!("读取认证文件元数据失败: {}", config.auth_file.display()))?;
 
         let refresh_url = std::env::var("CODEX_REFRESH_TOKEN_URL_OVERRIDE")
             .unwrap_or_else(|_| DEFAULT_REFRESH_URL.to_owned());
@@ -114,6 +93,7 @@ impl AuthState {
                 tokens,
                 account_id,
                 is_fedramp,
+                file_fingerprint,
             }),
         })
     }
@@ -125,6 +105,7 @@ impl AuthState {
             .lock()
             .map_err(|_| anyhow::anyhow!("认证状态锁已损坏"))?;
 
+        self.reload_if_changed(&mut state)?;
         if should_refresh(&state.tokens.access_token) {
             self.refresh(&mut state)?;
         }
@@ -182,8 +163,73 @@ impl AuthState {
         state.is_fedramp = is_fedramp;
         state.raw["tokens"] = serde_json::to_value(&state.tokens)?;
         state.raw["last_refresh"] = Value::String(Utc::now().to_rfc3339());
-        persist_auth_file(&self.auth_file, &state.raw).context("写回刷新后的认证文件失败")
+        persist_auth_file(&self.auth_file, &state.raw).context("写回刷新后的认证文件失败")?;
+        state.file_fingerprint = auth_file_fingerprint(&self.auth_file).with_context(|| {
+            format!("读取刷新后认证文件元数据失败: {}", self.auth_file.display())
+        })?;
+        Ok(())
     }
+
+    fn reload_if_changed(&self, state: &mut StoredAuth) -> Result<()> {
+        let current_fingerprint = auth_file_fingerprint(&self.auth_file)
+            .with_context(|| format!("读取认证文件元数据失败: {}", self.auth_file.display()))?;
+        if current_fingerprint == state.file_fingerprint {
+            return Ok(());
+        }
+
+        let (raw, tokens, account_id, is_fedramp) = read_auth_file(&self.auth_file)?;
+        state.raw = raw;
+        state.tokens = tokens;
+        state.account_id = account_id;
+        state.is_fedramp = is_fedramp;
+        state.file_fingerprint = auth_file_fingerprint(&self.auth_file)
+            .with_context(|| format!("读取认证文件元数据失败: {}", self.auth_file.display()))?;
+        Ok(())
+    }
+}
+
+fn read_auth_file(path: &Path) -> Result<(Value, StoredTokens, Option<String>, bool)> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("读取 Codex 认证文件失败: {}", path.display()))?;
+    let raw: Value = serde_json::from_str(&content)
+        .with_context(|| format!("认证文件不是有效 JSON: {}", path.display()))?;
+    if !raw.is_object() {
+        bail!("认证文件顶层必须是 JSON 对象");
+    }
+
+    let has_api_key = raw
+        .get("OPENAI_API_KEY")
+        .is_some_and(|value| !value.is_null());
+    let is_api_key_mode = raw
+        .get("auth_mode")
+        .and_then(Value::as_str)
+        .is_some_and(|mode| {
+            mode.eq_ignore_ascii_case("api_key") || mode.eq_ignore_ascii_case("apikey")
+        });
+    if has_api_key || is_api_key_mode {
+        bail!("认证文件是 API key 模式；此代理只支持 ChatGPT 登录 tokens");
+    }
+
+    let tokens_value = raw
+        .get("tokens")
+        .context("认证文件缺少 tokens，当前只支持 ChatGPT 网页登录")?;
+    let tokens: StoredTokens = serde_json::from_value(tokens_value.clone())
+        .context("认证文件中的 tokens 字段格式不完整")?;
+    let (account_id, is_fedramp) = parse_account_claims(&tokens.id_token)?;
+    let account_id = tokens.account_id.clone().or(account_id);
+    if account_id.is_none() {
+        bail!("认证文件中的 token 缺少 account_id");
+    }
+
+    Ok((raw, tokens, account_id, is_fedramp))
+}
+
+fn auth_file_fingerprint(path: &Path) -> io::Result<AuthFileFingerprint> {
+    let metadata = fs::metadata(path)?;
+    Ok(AuthFileFingerprint {
+        modified_at: metadata.modified()?,
+        length: metadata.len(),
+    })
 }
 
 fn parse_account_claims(jwt: &str) -> Result<(Option<String>, bool)> {
@@ -271,6 +317,7 @@ mod tests {
     use base64::Engine;
     use reqwest::blocking::Client;
     use serde_json::json;
+    use std::time::Duration;
 
     use super::{AuthConfig, AuthState};
 
@@ -310,6 +357,57 @@ mod tests {
         assert_eq!(headers["authorization"], "Bearer access-test");
         assert_eq!(headers["ChatGPT-Account-ID"], "acct_test");
         assert_eq!(headers["X-OpenAI-Fedramp"], "true");
+    }
+
+    #[test]
+    fn reloads_headers_when_auth_file_changes() {
+        let temp_dir = tempfile::tempdir().expect("创建临时目录");
+        let auth_file = temp_dir.path().join("auth.json");
+        write_auth_file(&auth_file, "access-first", "acct_first", true);
+
+        let state = AuthState::load(AuthConfig {
+            auth_file: auth_file.clone(),
+            client: Client::new(),
+        })
+        .expect("加载认证文件");
+        assert_eq!(
+            state.auth_headers().expect("构造初始认证头")["authorization"],
+            "Bearer access-first"
+        );
+
+        std::thread::sleep(Duration::from_millis(10));
+        write_auth_file(&auth_file, "access-second", "acct_second", false);
+
+        let headers = state.auth_headers().expect("重新加载认证头");
+        assert_eq!(headers["authorization"], "Bearer access-second");
+        assert_eq!(headers["ChatGPT-Account-ID"], "acct_second");
+        assert!(headers.get("X-OpenAI-Fedramp").is_none());
+    }
+
+    fn write_auth_file(
+        path: &std::path::Path,
+        access_token: &str,
+        account_id: &str,
+        is_fedramp: bool,
+    ) {
+        let id_token = fake_jwt(json!({
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": account_id,
+                "chatgpt_account_is_fedramp": is_fedramp
+            }
+        }));
+        let auth = json!({
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": null,
+            "tokens": {
+                "id_token": id_token,
+                "access_token": access_token,
+                "refresh_token": "refresh-test",
+                "account_id": account_id
+            }
+        });
+        std::fs::write(path, serde_json::to_vec(&auth).expect("序列化认证文件"))
+            .expect("写入认证文件");
     }
 
     fn fake_jwt(payload: serde_json::Value) -> String {
