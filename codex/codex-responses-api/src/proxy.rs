@@ -211,6 +211,21 @@ fn forward_headers(
             || lower_name == "host"
             || lower_name == "chatgpt-account-id"
             || lower_name == "x-openai-fedramp"
+            || lower_name == "forwarded"
+            || lower_name == "via"
+            || lower_name == "x-real-ip"
+            || lower_name == "x-client-ip"
+            || lower_name == "true-client-ip"
+            || lower_name == "connection"
+            || lower_name == "keep-alive"
+            || lower_name == "proxy-authenticate"
+            || lower_name == "proxy-authorization"
+            || lower_name == "te"
+            || lower_name == "trailer"
+            || lower_name == "transfer-encoding"
+            || lower_name == "upgrade"
+            || lower_name.starts_with("cf-")
+            || lower_name.starts_with("x-forwarded-")
         {
             continue;
         }
