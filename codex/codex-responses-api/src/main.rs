@@ -13,7 +13,7 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     auth_file: Option<PathBuf>,
 
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(long, default_value = "0.0.0.0")]
     bind: String,
 
     #[arg(long, default_value_t = 0)]
