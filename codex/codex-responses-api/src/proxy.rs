@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::blocking::{Client, Response as UpstreamResponse};
-use reqwest::header::{HOST, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{CONTENT_TYPE, HOST, HeaderMap, HeaderName, HeaderValue};
 use subtle::ConstantTimeEq;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use url::Url;
@@ -207,26 +207,10 @@ fn forward_headers(
     for header in request.headers() {
         let name = header.field.as_str();
         let lower_name = name.to_ascii_lowercase();
-        if lower_name == "authorization"
-            || lower_name == "host"
-            || lower_name == "chatgpt-account-id"
-            || lower_name == "x-openai-fedramp"
-            || lower_name == "forwarded"
-            || lower_name == "via"
-            || lower_name == "x-real-ip"
-            || lower_name == "x-client-ip"
-            || lower_name == "true-client-ip"
-            || lower_name == "connection"
-            || lower_name == "keep-alive"
-            || lower_name == "proxy-authenticate"
-            || lower_name == "proxy-authorization"
-            || lower_name == "te"
-            || lower_name == "trailer"
-            || lower_name == "transfer-encoding"
-            || lower_name == "upgrade"
-            || lower_name.starts_with("cf-")
-            || lower_name.starts_with("x-forwarded-")
-        {
+        if !matches!(
+            lower_name.as_str(),
+            "accept" | "user-agent" | "openai-beta" | "x-openai-client-user-agent"
+        ) {
             continue;
         }
         let Ok(name) = HeaderName::from_bytes(name.as_bytes()) else {
@@ -241,6 +225,7 @@ fn forward_headers(
     for (name, value) in auth_headers {
         headers.insert(name.clone(), value.clone());
     }
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(HOST, host_header.clone());
     headers
 }
