@@ -22,7 +22,7 @@ var chatRequestKeys = map[string]struct{}{
 	"service_tier": {}, "metadata": {}, "n": {}, "logprobs": {}, "top_logprobs": {},
 	"audio": {}, "modalities": {}, "functions": {}, "function_call": {},
 	"user": {}, "seed": {}, "logit_bias": {}, "prediction": {},
-	"prompt_cache_key": {}, "prompt_cache_retention": {}, "safety_identifier": {},
+	"prompt_cache_key": {}, "prompt_cache_retention": {}, "safety_identifier": {}, "web_search_options": {},
 }
 
 // ParseRequest 把 Chat Completions 请求解析成 IR。
@@ -79,11 +79,14 @@ func (ChatCodec) ParseRequest(body []byte, options Options) (*ir.Request, error)
 		request.Text = &ir.TextConfig{Format: format}
 	}
 	if raw := source["tools"]; hasJSONValue(raw) {
-		tools, err := chatToolsToIR(raw)
+		tools, builtIn, err := chatToolsToIR(raw)
 		if err != nil {
 			return nil, err
 		}
 		request.Tools = tools
+		for _, toolType := range builtIn {
+			request.Dropped = append(request.Dropped, "tools."+toolType)
+		}
 	}
 	if raw := source["tool_choice"]; hasJSONValue(raw) {
 		choice, err := chatChoiceToIR(raw)
@@ -99,7 +102,7 @@ func (ChatCodec) ParseRequest(body []byte, options Options) (*ir.Request, error)
 	}
 	request.Instructions = instructions
 	request.Input = items
-	request.Dropped = collectDropped(source, chatDroppableKeys)
+	request.Dropped = append(request.Dropped, collectDropped(source, chatDroppableKeys)...)
 	request.Unknown = unknownKeys(source, chatRequestKeys)
 	if err := rejectUnknown(request.Unknown, "Chat"); err != nil {
 		return nil, err
@@ -305,16 +308,17 @@ func chatThoughtSignature(call map[string]json.RawMessage) string {
 	return stringValue(call["thoughtSignature"])
 }
 
-func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
+func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, []string, error) {
 	tools := rawList(raw)
 	result := make([]ir.Tool, 0, len(tools))
+	builtIn := []string{}
 	for _, tool := range tools {
 		toolType := stringValue(tool["type"])
 		switch toolType {
 		case "function":
 			function := objectMap(tool["function"])
 			if len(function) == 0 || stringValue(function["name"]) == "" {
-				return nil, fmt.Errorf("Chat function tool 缺少 function.name")
+				return nil, nil, fmt.Errorf("Chat function tool 缺少 function.name")
 			}
 			result = append(result, ir.Tool{
 				Type:        "function",
@@ -326,7 +330,7 @@ func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
 		case "custom":
 			custom := objectMap(tool["custom"])
 			if len(custom) == 0 || stringValue(custom["name"]) == "" {
-				return nil, fmt.Errorf("Chat custom tool 缺少 custom.name")
+				return nil, nil, fmt.Errorf("Chat custom tool 缺少 custom.name")
 			}
 			result = append(result, ir.Tool{
 				Type:        "custom",
@@ -335,10 +339,14 @@ func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
 				Format:      cloneRaw(custom["format"]),
 			})
 		default:
-			return nil, fmt.Errorf("Chat tool.type %q 无法转换", toolType)
+			if isBuiltInToolType(toolType) {
+				builtIn = append(builtIn, toolType)
+				continue
+			}
+			return nil, nil, fmt.Errorf("Chat tool.type %q 无法转换", toolType)
 		}
 	}
-	return result, nil
+	return result, builtIn, nil
 }
 
 func chatChoiceToIR(raw json.RawMessage) (json.RawMessage, error) {
@@ -536,6 +544,9 @@ func irMessagesToChat(request *ir.Request, options Options) ([]any, error) {
 			}
 			messages = append(messages, message)
 		default:
+			if isBuiltInItemType(item.Type) {
+				continue
+			}
 			return nil, unsupportedItem("Chat Completions", item.Type)
 		}
 	}
@@ -642,6 +653,9 @@ func irToolsToChat(tools []ir.Tool) ([]any, error) {
 			}
 			result = append(result, map[string]any{"type": "custom", "custom": custom})
 		default:
+			if isBuiltInItemType(tool.Type) || isBuiltInToolType(tool.Type) {
+				continue
+			}
 			return nil, fmt.Errorf("Chat Completions 无法表达 tool type %q", tool.Type)
 		}
 	}
@@ -744,6 +758,9 @@ func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, 
 			}
 			toolCalls = append(toolCalls, call)
 		default:
+			if isBuiltInItemType(item.Type) {
+				continue
+			}
 			return nil, unsupportedItem("Chat Completions", item.Type)
 		}
 	}

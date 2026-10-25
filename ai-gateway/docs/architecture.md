@@ -63,10 +63,11 @@
 只有一种策略，按字段性质分三档：
 
 1. **保真**：目标协议能表达的字段一律原样映射（结构化输出、多模态、custom tool、allowed_tools、`service_tier`、`output_text.annotations` 等）。
-2. **丢弃调参/元数据**：不影响内容、只是调优或元信息的字段，目标协议不表达时静默丢弃，并记入 `ir.Request.Dropped` 供日志排查：Chat 侧 `user`、`seed`、`logit_bias`、`prediction`、`prompt_cache_key`、`prompt_cache_retention`、`safety_identifier`；Responses 侧 `include`、`prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options`、`safety_identifier`；GenerateContent 侧忽略 `store`、`metadata`、`service_tier`、`parallel_tool_calls`、`text.verbosity`、`reasoning.summary`。
-3. **报错**：丢失会改变语义时返回 400，并说明字段：`previous_response_id`/`conversation`/`background`/`prompt`/`moderation`/`context_management`/`max_tool_calls`、未知顶层字段、内置工具 item、custom tool 转 Gemini、`output_text.annotations` 转 Chat/Gemini、文件与音频转 Gemini、`n>1`、`logprobs`、音频输出、旧 `functions`/`function_call`。
+2. **丢弃调参/元数据与托管工具**：不影响内容、只是调优或元信息的字段，目标协议不表达时丢弃，并记入 `ir.Request.Dropped` 供日志排查：Chat 侧 `user`、`seed`、`logit_bias`、`prediction`、`prompt_cache_key`、`prompt_cache_retention`、`safety_identifier`、`web_search_options`；Responses 侧 `include`、`prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options`、`safety_identifier`；GenerateContent 侧忽略 `store`、`metadata`、`service_tier`、`parallel_tool_calls`、`text.verbosity`、`reasoning.summary`。
+   厂商托管工具同样降级而不是报错：`web_search`/`file_search`/`code_interpreter`/`computer_use`/`image_generation`/`mcp`/`tool_search` 工具被丢弃（记 `tools.<type>`）；`tool_search_call` 投影成名为 `tool_search` 的 function call，`tool_search_output` 投影成对应的 function output；其余内置 item（`web_search_call` 等）保留原始 JSON 并记 `items.<type>`，Chat/Gemini 输出时跳过，Responses 输出时原样回传。
+3. **报错**：丢失会改变语义时返回 400，并说明字段：`previous_response_id`/`conversation`/`background`/`prompt`/`moderation`/`context_management`/`max_tool_calls`、未知顶层字段或 item/tool 类型、custom tool 转 Gemini、`output_text.annotations` 转 Chat/Gemini、文件与音频转 Gemini、`n>1`、`logprobs`、音频输出、旧 `functions`/`function_call`。
 
-加密 reasoning 单独处理：`encrypted_content` 只在 Responses 内可回传（IR `Item.Encrypted` + Responses 写出保留），转 Chat/Gemini 时降级为可见 summary 文本，不报错也不伪造密文。
+加密 reasoning 单独处理：解析时整条 item 原文存入 `Item.Raw`，只有 Responses 目标原样回传（含未建模字段），转 Chat/Gemini 时降级为可见 summary 文本，不报错也不伪造密文。
 
 同协议请求/响应/流式是字节透传，不经 IR；同协议聚合优先保留源协议字段（见边界规则 7）。不承诺 Chat 与 Responses 之间任意字段都能无损互换：真正不可表达的 Responses item 不会凭空出现在 Chat 响应中。
 

@@ -152,8 +152,9 @@ func (s *Server) Serve(w http.ResponseWriter, r *http.Request, body []byte, inco
 		writeOpenAIError(w, http.StatusBadGateway, "conversion_error", err.Error())
 		return
 	}
-	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=false items=%d tools=%d dur=%v %s%s",
-		incoming, model, len(decoded.Output), len(request.Tools), duration.Round(time.Millisecond), formatUsageTag(decoded.Usage), droppedTag(request))
+	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=false items=%d tools=%d dur=%v %s%s%s",
+		incoming, model, len(decoded.Output), len(request.Tools), duration.Round(time.Millisecond),
+		formatUsageTag(decoded.Usage), servedTag(model, decoded.Model), droppedTag(request))
 	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write(output); err != nil {
 		log.Printf("[ai-gateway/gemini] 写入响应失败: %v", err)
@@ -225,8 +226,9 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, incoming co
 		return
 	}
 	flusher.Flush()
-	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=true ttft=%v dur=%v %s finish=%s chunks=%d items=%d%s",
-		incoming, model, ttft, time.Since(startTime).Round(time.Millisecond), formatUsageTag(response.Usage), response.FinishReason, chunks, len(response.Output), dropped)
+	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=true ttft=%v dur=%v %s finish=%s chunks=%d items=%d%s%s",
+		incoming, model, ttft, time.Since(startTime).Round(time.Millisecond), formatUsageTag(response.Usage),
+		response.FinishReason, chunks, len(response.Output), servedTag(model, response.Model), dropped)
 }
 
 func isCanceled(r *http.Request, err error) bool {
@@ -251,11 +253,20 @@ func droppedTag(request *ir.Request) string {
 	return " dropped=" + strings.Join(request.Dropped, ",")
 }
 
+// formatUsageTag 输出 token 明细：缓存命中与思考 token 都要可见，便于排查计费差异。
 func formatUsageTag(usage *ir.Usage) string {
 	if usage == nil {
-		return "tokens=0/0/0"
+		return "tokens=in:0(cache:0)/out:0(think:0)"
 	}
-	return fmt.Sprintf("tokens=in:%d/out:%d/think:%d", usage.InputTokens, usage.OutputTokens, usage.ReasoningTokens)
+	return fmt.Sprintf("tokens=in:%d(cache:%d)/out:%d(think:%d)", usage.InputTokens, usage.CachedInputTokens, usage.OutputTokens, usage.ReasoningTokens)
+}
+
+// servedTag 记录上游实际返回的模型名，与请求不一致时说明路由/别名生效情况。
+func servedTag(requested, served string) string {
+	if served == "" || served == requested {
+		return ""
+	}
+	return " served=" + served
 }
 
 // ServeModels 列出该 route 可用的模型名和别名。

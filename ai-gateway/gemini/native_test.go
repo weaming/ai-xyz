@@ -68,7 +68,7 @@ func TestEncodeRequestRejectsUnsupported(t *testing.T) {
 		"custom_tool_call":    {Input: []ir.Item{{Type: "custom_tool_call", CallID: "c", Name: "grammar", Input: "x"}}},
 		"不支持请求字段":             {Input: toolRequestItems(), Unknown: map[string]json.RawMessage{"foo": json.RawMessage(`1`)}},
 		"仅支持 base64 data URL": {Input: []ir.Item{{Type: "message", Role: "user", Content: []ir.ContentPart{{Type: "input_image", ImageURL: "https://example.com/a.png"}}}}},
-		`收到 "web_search"`:     {Input: toolRequestItems(), Tools: []ir.Tool{{Type: "web_search"}}},
+		`收到 "mystery_tool"`:   {Input: toolRequestItems(), Tools: []ir.Tool{{Type: "mystery_tool"}}},
 	}
 	for expected, request := range cases {
 		if _, err := encodeRequest(request, genai.ThinkingLevelUnspecified); err == nil || !strings.Contains(err.Error(), expected) {
@@ -93,6 +93,27 @@ func TestEncodeRequestDataURLImage(t *testing.T) {
 }
 
 // TestEncodeRequestIgnoresTuningFields 覆盖调参/元数据字段被忽略而不是报错。
+// TestEncodeRequestDropsBuiltInToolsAndItems 覆盖内置工具与内置 item 被跳过。
+func TestEncodeRequestDropsBuiltInToolsAndItems(t *testing.T) {
+	request := &ir.Request{
+		Input: []ir.Item{
+			{Type: "message", Role: "user", Content: []ir.ContentPart{{Type: "text", Text: "hi"}}},
+			{Type: "web_search_call", Raw: json.RawMessage(`{"type":"web_search_call","id":"ws_1"}`)},
+		},
+		Tools: []ir.Tool{{Type: "web_search"}, {Type: "function", Name: "f"}},
+	}
+	native, err := encodeRequest(request, genai.ThinkingLevelUnspecified)
+	if err != nil {
+		t.Fatalf("内置工具/item 应被跳过: %v", err)
+	}
+	if len(native.Tools) != 1 || len(native.Tools[0].FunctionDeclarations) != 1 || native.Tools[0].FunctionDeclarations[0].Name != "f" {
+		t.Fatalf("tools = %#v", native.Tools)
+	}
+	if len(native.Contents) != 1 {
+		t.Fatalf("contents = %d", len(native.Contents))
+	}
+}
+
 func TestEncodeRequestIgnoresTuningFields(t *testing.T) {
 	store := true
 	parallel := true

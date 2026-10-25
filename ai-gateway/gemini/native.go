@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/weaming/ai-xyz/ai-gateway/convert"
 	"github.com/weaming/ai-xyz/ai-gateway/ir"
 	"google.golang.org/genai"
 )
@@ -121,6 +122,10 @@ func encodeContents(items []ir.Item, systemText string) ([]*genai.Content, strin
 		case "reasoning":
 			continue
 		default:
+			if convert.IsBuiltInItemType(item.Type) {
+				// 厂商托管工具的记录对模型不可见，直接跳过。
+				continue
+			}
 			return nil, "", fmt.Errorf("generate_content 不支持 item type %q", item.Type)
 		}
 	}
@@ -259,6 +264,9 @@ func encodeTools(tools []ir.Tool) ([]*genai.Tool, error) {
 	declarations := make([]*genai.FunctionDeclaration, 0, len(tools))
 	for _, tool := range tools {
 		if tool.Type != "function" {
+			if convert.IsBuiltInToolType(tool.Type) {
+				continue
+			}
 			return nil, fmt.Errorf("generate_content 只支持 function tool，收到 %q", tool.Type)
 		}
 		declaration := &genai.FunctionDeclaration{Name: tool.Name, Description: tool.Description}

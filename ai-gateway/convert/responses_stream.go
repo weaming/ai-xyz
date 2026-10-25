@@ -533,6 +533,11 @@ func (writer *responsesStreamWriter) frame(event string, payload map[string]any)
 }
 
 func itemPayload(item ir.Item, index int) map[string]any {
+	if len(item.Raw) > 0 {
+		if payload, ok := rawToAny(item.Raw).(map[string]any); ok {
+			return payload
+		}
+	}
 	switch item.Type {
 	case "message":
 		content := []any{}

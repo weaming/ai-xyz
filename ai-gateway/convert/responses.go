@@ -67,11 +67,14 @@ func (ResponsesCodec) ParseRequest(body []byte, options Options) (*ir.Request, e
 		request.Text = config
 	}
 	if raw := source["tools"]; hasJSONValue(raw) {
-		tools, err := responsesToolsToIR(raw)
+		tools, builtIn, err := responsesToolsToIR(raw)
 		if err != nil {
 			return nil, err
 		}
 		request.Tools = tools
+		for _, toolType := range builtIn {
+			request.Dropped = append(request.Dropped, "tools."+toolType)
+		}
 	}
 	if raw := source["tool_choice"]; hasJSONValue(raw) {
 		choice, err := responsesChoiceToIR(raw)
@@ -86,15 +89,18 @@ func (ResponsesCodec) ParseRequest(body []byte, options Options) (*ir.Request, e
 		return nil, err
 	}
 	request.Instructions = instructions
-	items, err := responsesInputToIR(source["input"])
+	items, projectedItems, err := responsesInputToIR(source["input"])
 	if err != nil {
 		return nil, err
+	}
+	for _, itemType := range projectedItems {
+		request.Dropped = append(request.Dropped, "items."+itemType)
 	}
 	if len(items) == 0 {
 		return nil, fmt.Errorf("Responses input 不能为空")
 	}
 	request.Input = items
-	request.Dropped = collectDropped(source, responsesDroppableKeys)
+	request.Dropped = append(request.Dropped, collectDropped(source, responsesDroppableKeys)...)
 	request.Unknown = unknownKeys(source, responsesRequestKeys)
 	if err := rejectUnknown(request.Unknown, "Responses"); err != nil {
 		return nil, err
@@ -148,27 +154,31 @@ func responsesInstructionsToIR(raw json.RawMessage) ([]ir.ContentPart, error) {
 	return instructions, nil
 }
 
-func responsesInputToIR(raw json.RawMessage) ([]ir.Item, error) {
+func responsesInputToIR(raw json.RawMessage) ([]ir.Item, []string, error) {
 	if !hasJSONValue(raw) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		return []ir.Item{{Type: "message", Role: "user", Content: []ir.ContentPart{{Type: "text", Text: text}}}}, nil
+		return []ir.Item{{Type: "message", Role: "user", Content: []ir.ContentPart{{Type: "text", Text: text}}}}, nil, nil
 	}
 	var items []map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, fmt.Errorf("Responses input 必须是字符串或 item 数组: %w", err)
+		return nil, nil, fmt.Errorf("Responses input 必须是字符串或 item 数组: %w", err)
 	}
 	result := make([]ir.Item, 0, len(items))
+	projected := []string{}
 	for _, item := range items {
 		converted, err := responsesItemToIR(item)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if itemType := stringValue(item["type"]); isBuiltInItemType(itemType) {
+			projected = append(projected, itemType)
 		}
 		result = append(result, converted)
 	}
-	return result, nil
+	return result, projected, nil
 }
 
 func responsesItemToIR(item map[string]json.RawMessage) (ir.Item, error) {
@@ -198,9 +208,19 @@ func responsesItemToIR(item map[string]json.RawMessage) (ir.Item, error) {
 	case "function_call_output", "custom_tool_call_output":
 		return ir.Item{Type: itemType, CallID: stringValue(item["call_id"]), Output: cloneRaw(item["output"])}, nil
 	case "reasoning":
-		converted := ir.Item{Type: "reasoning", Role: "assistant", Encrypted: stringValue(item["encrypted_content"])}
+		converted := ir.Item{Type: "reasoning", Role: "assistant", Encrypted: stringValue(item["encrypted_content"]), Raw: mustJSON(rawMapToAny(item))}
 		converted.Content = responsesReasoningParts(item)
 		return converted, nil
+	case "tool_search_call":
+		converted := ir.Item{Type: "function_call", CallID: stringValue(item["call_id"]), Name: "tool_search", Arguments: stringValue(item["arguments"]), Raw: mustJSON(rawMapToAny(item))}
+		return converted, nil
+	case "tool_search_output":
+		converted := ir.Item{Type: "function_call_output", CallID: stringValue(item["call_id"]), Output: mustJSON(rawMapToAny(item))}
+		return converted, nil
+	case "web_search_call", "file_search_call", "code_interpreter_call", "computer_call", "computer_call_output",
+		"image_generation_call", "mcp_call", "mcp_call_output":
+		// 厂商托管的工具记录：保留原始 item，Chat/Gemini 侧没有对应结构，输出时跳过。
+		return ir.Item{Type: itemType, Raw: mustJSON(rawMapToAny(item))}, nil
 	default:
 		return ir.Item{}, fmt.Errorf("不支持 Responses input item.type %q", itemType)
 	}
@@ -283,14 +303,15 @@ func responsesPartToIR(part map[string]json.RawMessage, role string) (ir.Content
 	}
 }
 
-func responsesToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
+func responsesToolsToIR(raw json.RawMessage) ([]ir.Tool, []string, error) {
 	tools := rawList(raw)
 	result := make([]ir.Tool, 0, len(tools))
+	builtIn := []string{}
 	for _, tool := range tools {
 		switch toolType := stringValue(tool["type"]); toolType {
 		case "function":
 			if stringValue(tool["name"]) == "" {
-				return nil, fmt.Errorf("Responses function tool 缺少 name")
+				return nil, nil, fmt.Errorf("Responses function tool 缺少 name")
 			}
 			result = append(result, ir.Tool{
 				Type:        "function",
@@ -301,7 +322,7 @@ func responsesToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
 			})
 		case "custom":
 			if stringValue(tool["name"]) == "" {
-				return nil, fmt.Errorf("Responses custom tool 缺少 name")
+				return nil, nil, fmt.Errorf("Responses custom tool 缺少 name")
 			}
 			result = append(result, ir.Tool{
 				Type:        "custom",
@@ -310,11 +331,45 @@ func responsesToolsToIR(raw json.RawMessage) ([]ir.Tool, error) {
 				Format:      cloneRaw(tool["format"]),
 			})
 		default:
-			result = append(result, ir.Tool{Type: toolType, Name: stringValue(tool["name"]), Raw: mustJSON(rawMapToAny(tool))})
+			if isBuiltInToolType(toolType) {
+				// 内置工具（web_search/file_search/mcp/...）无法交给模型，丢弃并记录。
+				builtIn = append(builtIn, toolType)
+				continue
+			}
+			return nil, nil, fmt.Errorf("Responses 暂不支持 tool.type %q", toolType)
 		}
 	}
-	return result, nil
+	return result, builtIn, nil
 }
+
+// isBuiltInToolType 判断是否是厂商托管的内置工具（网关无法执行，也不交给模型）。
+func isBuiltInToolType(toolType string) bool {
+	switch toolType {
+	case "web_search", "web_search_preview", "web_search_preview_2025_03_11",
+		"file_search", "code_interpreter", "computer_use_preview",
+		"image_generation", "mcp", "tool_search":
+		return true
+	}
+	return strings.HasPrefix(toolType, "web_search") ||
+		strings.HasPrefix(toolType, "mcp") ||
+		strings.HasPrefix(toolType, "tool_search")
+}
+
+// isBuiltInItemType 判断是否是厂商托管工具的调用/产物 item。
+func isBuiltInItemType(itemType string) bool {
+	switch itemType {
+	case "web_search_call", "file_search_call", "code_interpreter_call", "computer_call", "computer_call_output",
+		"image_generation_call", "mcp_call", "mcp_call_output", "tool_search_call", "tool_search_output":
+		return true
+	}
+	return false
+}
+
+// IsBuiltInToolType 供其它协议包判断内置工具类型。
+func IsBuiltInToolType(toolType string) bool { return isBuiltInToolType(toolType) }
+
+// IsBuiltInItemType 供其它协议包判断内置工具 item 类型。
+func IsBuiltInItemType(itemType string) bool { return isBuiltInItemType(itemType) }
 
 func responsesChoiceToIR(raw json.RawMessage) (json.RawMessage, error) {
 	var text string
@@ -413,6 +468,12 @@ func (ResponsesCodec) WriteRequest(request *ir.Request, options Options) ([]byte
 func irItemsToResponses(items []ir.Item) []any {
 	result := make([]any, 0, len(items))
 	for _, item := range items {
+		if len(item.Raw) > 0 && (isBuiltInItemType(item.Type) || item.Type == "reasoning") {
+			if payload := rawToAny(item.Raw); payload != nil {
+				result = append(result, payload)
+				continue
+			}
+		}
 		switch item.Type {
 		case "message":
 			result = append(result, map[string]any{"type": "message", "role": item.Role, "content": irContentToResponses(item.Content, item.Role)})
@@ -710,6 +771,11 @@ func (ResponsesCodec) ParseResponse(body []byte, options Options) (*ir.Response,
 }
 
 func irItemToResponses(item ir.Item, index int, options Options) (any, error) {
+	if len(item.Raw) > 0 {
+		if payload := rawToAny(item.Raw); payload != nil {
+			return payload, nil
+		}
+	}
 	switch item.Type {
 	case "message":
 		content := []any{}

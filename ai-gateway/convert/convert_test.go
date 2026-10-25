@@ -422,3 +422,93 @@ func TestServiceTierAndFingerprintRoundTrip(t *testing.T) {
 		t.Fatalf("system_fingerprint 丢失: %s", encoded)
 	}
 }
+
+// TestBuiltInToolsAndItemsProjectInsteadOfFailing 覆盖内置工具与内置 item 的降级。
+func TestBuiltInToolsAndItemsProjectInsteadOfFailing(t *testing.T) {
+	body := `{
+		"input": [
+			{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+			{"type": "web_search_call", "id": "ws_1", "status": "completed", "action": {"type": "search", "query": "go"}},
+			{"type": "tool_search_call", "call_id": "c1", "arguments": {"query": "tools"}},
+			{"type": "tool_search_output", "call_id": "c1", "tools": [{"type": "function", "name": "f"}]}
+		],
+		"tools": [
+			{"type": "web_search"},
+			{"type": "function", "name": "f", "parameters": {"type": "object"}}
+		]
+	}`
+	converted := convertRequest(t, convert.ProtocolResponses, convert.ProtocolChatCompletions, body, convert.Options{})
+	messages := converted["messages"].([]any)
+	// web_search_call 被跳过，tool_search_call/output 投影成 function 调用与 tool 消息
+	if len(messages) != 3 {
+		t.Fatalf("内置 item 应被跳过: %#v", messages)
+	}
+	if messages[2].(map[string]any)["role"] != "tool" || messages[2].(map[string]any)["tool_call_id"] != "c1" {
+		t.Fatalf("tool_search_output 投影失败: %#v", messages[2])
+	}
+	toolCalls := messages[1].(map[string]any)["tool_calls"].([]any)
+	if toolCalls[0].(map[string]any)["function"].(map[string]any)["name"] != "tool_search" {
+		t.Fatalf("tool_search_call 应投影成 function call: %#v", toolCalls)
+	}
+	tools := converted["tools"].([]any)
+	if len(tools) != 1 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "f" {
+		t.Fatalf("内置工具应被丢弃: %#v", tools)
+	}
+
+	request, err := convert.ResponsesCodec{}.ParseRequest([]byte(body), convert.Options{})
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	dropped := strings.Join(request.Dropped, ",")
+	for _, expected := range []string{"tools.web_search", "items.web_search_call", "items.tool_search_call"} {
+		if !strings.Contains(dropped, expected) {
+			t.Fatalf("Dropped 缺少 %s: %v", expected, request.Dropped)
+		}
+	}
+}
+
+// TestBuiltInItemsRoundTripThroughResponses 覆盖内置 item 转向 Responses 时原样保留。
+func TestBuiltInItemsRoundTripThroughResponses(t *testing.T) {
+	body := `{"input": [
+		{"type": "message", "role": "user", "content": "hi"},
+		{"type": "web_search_call", "id": "ws_1", "status": "completed", "action": {"type": "search", "query": "go"}}
+	]}`
+	codec := convert.ResponsesCodec{}
+	request, err := codec.ParseRequest([]byte(body), convert.Options{})
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	output, err := codec.WriteRequest(request, convert.Options{})
+	if err != nil {
+		t.Fatalf("写回失败: %v", err)
+	}
+	if !strings.Contains(string(output), `"web_search_call"`) || !strings.Contains(string(output), `"ws_1"`) {
+		t.Fatalf("内置 item 未保留: %s", output)
+	}
+}
+
+// TestSealedReasoningKeepsOriginalItem 覆盖加密 reasoning 的原始 item 保真。
+func TestSealedReasoningKeepsOriginalItem(t *testing.T) {
+	body := `{"id":"resp_1","created_at":1700000000,"model":"m","status":"completed","output":[
+		{"type":"reasoning","id":"rs_1","status":"completed","encrypted_content":"gAAAA","vendored_field":{"x":1},"summary":[{"type":"summary_text","text":"think"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`
+	codec := convert.ResponsesCodec{}
+	response, err := codec.ParseResponse([]byte(body), convert.Options{})
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	output, err := codec.WriteResponse(response, convert.Options{})
+	if err != nil {
+		t.Fatalf("写回失败: %v", err)
+	}
+	text := string(output)
+	if !strings.Contains(text, "vendored_field") || !strings.Contains(text, `"rs_1"`) {
+		t.Fatalf("密封 reasoning 未原样保留: %s", text)
+	}
+	// 转 Chat 仍然只取可见 summary，不报错。
+	chat := convertResponse(t, convert.ProtocolResponses, convert.ProtocolChatCompletions, body, convert.Options{EmitReasoning: true})
+	message := chat["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	if message["reasoning_content"] != "think" {
+		t.Fatalf("可见 reasoning 丢失: %#v", message)
+	}
+}
