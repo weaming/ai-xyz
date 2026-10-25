@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
 
 // OpenAIConverter 负责 OpenAI Chat Completions 与 Responses 之间的转换。
@@ -14,8 +16,8 @@ func NewOpenAIConverter() Converter {
 	return OpenAIConverter{}
 }
 
-func (OpenAIConverter) Provider() string {
-	return "openai"
+func (OpenAIConverter) Provider() ir.Provider {
+	return ir.ProviderOpenAI
 }
 
 func (OpenAIConverter) Supports(source, target Protocol) bool {

@@ -6,7 +6,9 @@ type Provider string
 const (
 	ProviderOpenAI    Provider = "openai"
 	ProviderAnthropic Provider = "anthropic"
+	ProviderDeepSeek  Provider = "deepseek"
 	ProviderGoogle    Provider = "google"
+	ProviderVertex    Provider = "vertex"
 )
 
 // Capability 表示适配器可以声明的能力集合。

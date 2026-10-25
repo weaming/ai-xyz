@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
 
 func TestChatRequestToResponses(t *testing.T) {
@@ -369,7 +371,7 @@ func TestResponsesResponseToChatConvertsCustomToolCall(t *testing.T) {
 
 func TestDefaultRegistryProvidesProviderConverters(t *testing.T) {
 	registry := DefaultRegistry()
-	for _, provider := range []string{"openai", "deepseek"} {
+	for _, provider := range []ir.Provider{ir.ProviderOpenAI, ir.ProviderDeepSeek} {
 		converter, err := registry.ForProvider(provider)
 		if err != nil {
 			t.Fatalf("provider %q: %v", provider, err)

@@ -1,6 +1,10 @@
 package convert
 
-import "io"
+import (
+	"io"
+
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
+)
 
 // Mode 控制无法映射字段的处理方式。
 type Mode string
@@ -17,6 +21,7 @@ type Protocol string
 const (
 	ProtocolChatCompletions Protocol = "chat"
 	ProtocolResponses       Protocol = "responses"
+	ProtocolGenerateContent Protocol = "generate_content"
 )
 
 // Options 是协议转换所需的运行时选项。
@@ -28,7 +33,7 @@ type Options struct {
 
 // Converter 是一个厂商协议转换器。
 type Converter interface {
-	Provider() string
+	Provider() ir.Provider
 	Supports(source, target Protocol) bool
 	ConvertRequest(source, target Protocol, input []byte, options Options) ([]byte, error)
 	ConvertResponse(source, target Protocol, input []byte, options Options) ([]byte, error)

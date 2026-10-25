@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
 
 const maxFilesRequestSize int64 = 128 * 1024 * 1024
@@ -14,11 +16,11 @@ type filesProvider interface {
 	UpstreamURL(baseURL string) string
 }
 
-var filesProviders = map[string]filesProvider{
-	"deepseek": deepSeekFilesProvider{},
+var filesProviders = map[ir.Provider]filesProvider{
+	ir.ProviderDeepSeek: deepSeekFilesProvider{},
 }
 
-func filesProviderFor(provider string) (filesProvider, bool) {
+func filesProviderFor(provider ir.Provider) (filesProvider, bool) {
 	filesProvider, ok := filesProviders[provider]
 	return filesProvider, ok
 }
@@ -41,7 +43,7 @@ func (gateway *Gateway) handleFilesUpload(writer http.ResponseWriter, request *h
 	}
 	provider, exists := filesProviderFor(route.config.Upstream.Provider)
 	if !exists {
-		writeError(writer, http.StatusBadRequest, "Files API 暂不支持 provider: "+route.config.Upstream.Provider)
+		writeError(writer, http.StatusBadRequest, "Files API 暂不支持 provider: "+string(route.config.Upstream.Provider))
 		return
 	}
 	if request.Method != http.MethodPost {

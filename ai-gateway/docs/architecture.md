@@ -53,7 +53,7 @@
 - `responses`：`/provider/<id>/v1/responses` 直连，`/provider/<id>/v1/chat/completions` 转成 Responses。
 - `chat`：`/provider/<id>/v1/chat/completions` 直连，`/provider/<id>/v1/responses` 转成 Chat Completions。
 
-两条路径都支持非流式和 SSE 流式。未实现的厂商不会被配置文件假装成已支持；后续通过独立 adapter 实现 Anthropic Messages、Google GenerateContent/Interactions 等协议。
+两条路径都支持非流式和 SSE 流式。`google` 与 `vertex` route 共用 GenerateContent 适配器，直接把入口 Chat/Responses 请求转换成 Google SDK 类型；它尚未接入上述通用 IR，因此遇到未映射字段会拒绝请求。Anthropic Messages 和 Google Interactions 尚未实现。
 
 ## 保真策略
 

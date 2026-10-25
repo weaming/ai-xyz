@@ -1,5 +1,7 @@
 package convert
 
+import "github.com/weaming/ai-xyz/ai-gateway/ir"
+
 // DeepSeekConverter 复用 OpenAI wire protocol 的转换逻辑。
 type DeepSeekConverter struct {
 	OpenAIConverter
@@ -10,6 +12,6 @@ func NewDeepSeekConverter() Converter {
 	return DeepSeekConverter{}
 }
 
-func (DeepSeekConverter) Provider() string {
-	return "deepseek"
+func (DeepSeekConverter) Provider() ir.Provider {
+	return ir.ProviderDeepSeek
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/weaming/ai-xyz/ai-gateway/convert"
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -42,14 +43,28 @@ type Auth struct {
 
 // Upstream 定义上游协议、地址、鉴权和可选 HTTP 代理。
 type Upstream struct {
-	Provider     string           `yaml:"provider"`
-	Protocol     convert.Protocol `yaml:"protocol"`
-	BaseURL      string           `yaml:"base_url"`
-	Token        string           `yaml:"token"`
-	TokenEnv     string           `yaml:"token_env"`
-	Proxy        string           `yaml:"proxy"`
-	Timeout      time.Duration    `yaml:"timeout"`
-	Capabilities []string         `yaml:"capabilities"`
+	Provider        ir.Provider      `yaml:"provider"`
+	Protocol        convert.Protocol `yaml:"protocol"`
+	BaseURL         string           `yaml:"base_url"`
+	Token           string           `yaml:"token"`
+	TokenEnv        string           `yaml:"token_env"`
+	Proxy           string           `yaml:"proxy"`
+	Timeout         time.Duration    `yaml:"timeout"`
+	Capabilities    []string         `yaml:"capabilities"`
+	GenerateContent GenerateContent  `yaml:"generate_content"`
+	Vertex          Vertex           `yaml:"vertex"`
+}
+
+// GenerateContent 定义 generate_content 协议的模型映射和默认思考级别。
+type GenerateContent struct {
+	ThinkingLevel string            `yaml:"thinking_level"`
+	ModelAliases  map[string]string `yaml:"model_aliases"`
+}
+
+// Vertex 定义 Vertex AI 连接所需的项目和区域。
+type Vertex struct {
+	Project  string `yaml:"project"`
+	Location string `yaml:"location"`
 }
 
 // Defaults 是请求级默认值。
@@ -131,10 +146,10 @@ func (cfg *Config) Validate() error {
 	for index := range cfg.Routes {
 		route := &cfg.Routes[index]
 		if route.Upstream.Provider == "" {
-			route.Upstream.Provider = "openai"
+			route.Upstream.Provider = ir.ProviderOpenAI
 		}
-		if route.Upstream.Provider != "openai" && route.Upstream.Provider != "deepseek" {
-			return fmt.Errorf("route %q 的 provider %q 尚未实现，当前支持 openai、deepseek", route.ID, route.Upstream.Provider)
+		if route.Upstream.Provider != ir.ProviderOpenAI && route.Upstream.Provider != ir.ProviderDeepSeek && route.Upstream.Provider != ir.ProviderGoogle && route.Upstream.Provider != ir.ProviderVertex {
+			return fmt.Errorf("route %q 的 provider %q 尚未实现，当前支持 openai、deepseek、google、vertex", route.ID, route.Upstream.Provider)
 		}
 		if route.ID == "" || !routeIDPattern.MatchString(route.ID) {
 			return fmt.Errorf("routes[%d].id 无效: %q", index, route.ID)
@@ -144,10 +159,38 @@ func (cfg *Config) Validate() error {
 		}
 		seen[route.ID] = struct{}{}
 
-		if route.Upstream.Protocol != convert.ProtocolResponses && route.Upstream.Protocol != convert.ProtocolChatCompletions {
+		isGeminiProvider := route.Upstream.Provider == ir.ProviderGoogle || route.Upstream.Provider == ir.ProviderVertex
+		if isGeminiProvider && route.Upstream.Protocol != convert.ProtocolGenerateContent {
+			return fmt.Errorf("route %q 的 upstream.protocol 必须是 generate_content", route.ID)
+		}
+		if route.Upstream.Provider == ir.ProviderVertex && (route.Upstream.Vertex.Project == "" || route.Upstream.Vertex.Location == "") {
+			return fmt.Errorf("route %q 的 Vertex AI 需要 upstream.vertex.project 和 location", route.ID)
+		}
+		if route.Upstream.Provider == ir.ProviderVertex && (route.Upstream.Token != "" || route.Upstream.TokenEnv != "") {
+			return fmt.Errorf("route %q 的 Vertex AI 使用默认凭据，不支持 upstream.token 或 token_env", route.ID)
+		}
+		if route.Upstream.Provider == ir.ProviderGoogle && (route.Upstream.Vertex.Project != "" || route.Upstream.Vertex.Location != "") {
+			return fmt.Errorf("route %q 的 Google Gemini API 不支持 upstream.vertex", route.ID)
+		}
+		if isGeminiProvider {
+			switch strings.ToLower(route.Upstream.GenerateContent.ThinkingLevel) {
+			case "", "low", "medium", "high":
+			default:
+				return fmt.Errorf("route %q 的 upstream.generate_content.thinking_level 无效: %q", route.ID, route.Upstream.GenerateContent.ThinkingLevel)
+			}
+			for alias, model := range route.Upstream.GenerateContent.ModelAliases {
+				if strings.TrimSpace(alias) == "" || strings.TrimSpace(model) == "" {
+					return fmt.Errorf("route %q 的 upstream.generate_content.model_aliases 不能包含空别名或模型", route.ID)
+				}
+			}
+		} else if route.Upstream.Vertex.Project != "" || route.Upstream.Vertex.Location != "" ||
+			route.Upstream.GenerateContent.ThinkingLevel != "" || len(route.Upstream.GenerateContent.ModelAliases) > 0 {
+			return fmt.Errorf("route %q 的 upstream.vertex 和 generate_content 只适用于 google 或 vertex", route.ID)
+		}
+		if !isGeminiProvider && route.Upstream.Protocol != convert.ProtocolResponses && route.Upstream.Protocol != convert.ProtocolChatCompletions {
 			return fmt.Errorf("route %q 的 upstream.protocol 必须是 responses 或 chat", route.ID)
 		}
-		if route.Upstream.BaseURL == "" {
+		if route.Upstream.BaseURL == "" && !isGeminiProvider {
 			return fmt.Errorf("route %q 缺少 upstream.base_url", route.ID)
 		}
 		if route.Conversion.Mode == "" {

@@ -123,6 +123,95 @@ func TestGatewayUsesDeepSeekResponsesPath(t *testing.T) {
 	}
 }
 
+func TestGatewayGeminiRoute(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !strings.Contains(request.URL.Path, "models/gemini-test:generateContent") && !strings.Contains(request.URL.Path, "models/gemini-test:streamGenerateContent") {
+			t.Errorf("Gemini path = %s", request.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode Gemini request: %v", err)
+		}
+		if _, exists := body["contents"]; !exists {
+			t.Errorf("Gemini contents missing: %#v", body)
+		}
+		if strings.Contains(request.URL.Path, ":streamGenerateContent") {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			_, _ = writer.Write([]byte("data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]},\"finishReason\":\"STOP\"}]}\n\n"))
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"finishReason":"STOP"}],"modelVersion":"gemini-test"}`))
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{Routes: []config.Route{{
+		ID: "gemini", Auth: config.Auth{Token: "incoming"},
+		Upstream: config.Upstream{Provider: "google", Protocol: convert.ProtocolGenerateContent, BaseURL: upstream.URL, Token: "outgoing"},
+		Defaults: config.Defaults{Model: "gemini-test"},
+	}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/provider/gemini/v1/models", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized models status=%d", unauthorized.Code)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	request.Header.Set("Authorization", "Bearer incoming")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"content":"hello"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	responseRequest := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/responses", strings.NewReader(`{"input":"hi"}`))
+	responseRequest.Header.Set("Authorization", "Bearer incoming")
+	responses := httptest.NewRecorder()
+	handler.ServeHTTP(responses, responseRequest)
+	if responses.Code != http.StatusOK || !strings.Contains(responses.Body.String(), `"output_text"`) {
+		t.Fatalf("responses status=%d body=%s", responses.Code, responses.Body.String())
+	}
+	if !strings.Contains(responses.Body.String(), `"status":"completed"`) {
+		t.Fatalf("responses status missing: %s", responses.Body.String())
+	}
+	unsupported := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/responses", strings.NewReader(`{"input":"hi","store":true}`))
+	unsupported.Header.Set("Authorization", "Bearer incoming")
+	unsupportedRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(unsupportedRecorder, unsupported)
+	if unsupportedRecorder.Code != http.StatusBadRequest || !strings.Contains(unsupportedRecorder.Body.String(), "store") {
+		t.Fatalf("unsupported status=%d body=%s", unsupportedRecorder.Code, unsupportedRecorder.Body.String())
+	}
+
+	streamRequest := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/chat/completions", strings.NewReader(`{"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	streamRequest.Header.Set("Authorization", "Bearer incoming")
+	stream := httptest.NewRecorder()
+	handler.ServeHTTP(stream, streamRequest)
+	if stream.Code != http.StatusOK || !strings.Contains(stream.Body.String(), "data: [DONE]") || !strings.Contains(stream.Body.String(), `"content":"hello"`) {
+		t.Fatalf("stream status=%d body=%s", stream.Code, stream.Body.String())
+	}
+	responseStreamRequest := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/responses", strings.NewReader(`{"stream":true,"input":"hi"}`))
+	responseStreamRequest.Header.Set("Authorization", "Bearer incoming")
+	responseStream := httptest.NewRecorder()
+	handler.ServeHTTP(responseStream, responseStreamRequest)
+	if responseStream.Code != http.StatusOK || !strings.Contains(responseStream.Body.String(), "event: response.completed\n") {
+		t.Fatalf("responses stream status=%d body=%s", responseStream.Code, responseStream.Body.String())
+	}
+
+	models := httptest.NewRecorder()
+	modelRequest := httptest.NewRequest(http.MethodGet, "/provider/gemini/v1/models", nil)
+	modelRequest.Header.Set("Authorization", "Bearer incoming")
+	handler.ServeHTTP(models, modelRequest)
+	if models.Code != http.StatusOK || !strings.Contains(models.Body.String(), "gemini-test") {
+		t.Fatalf("models status=%d body=%s", models.Code, models.Body.String())
+	}
+}
+
 func TestGatewayAggregatesForcedResponsesStream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/weaming/ai-xyz/ai-gateway/config"
 	"github.com/weaming/ai-xyz/ai-gateway/convert"
+	"github.com/weaming/ai-xyz/ai-gateway/gemini"
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
 
 const maxRequestBytes = 32 * 1024 * 1024
@@ -30,16 +33,54 @@ type routeHandler struct {
 	upstreamToken string
 	client        *http.Client
 	converter     convert.Converter
+	gemini        *gemini.Server
 }
 
 // New 创建网关 HTTP handler。
 func New(cfg config.Config, logger *slog.Logger) (*Gateway, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	routes := make(map[string]routeHandler, len(cfg.Routes))
 	converters := convert.DefaultRegistry()
 	for _, route := range cfg.Routes {
+		if route.Upstream.Protocol == convert.ProtocolGenerateContent {
+			var apiKey string
+			if route.Upstream.Provider == ir.ProviderGoogle {
+				var err error
+				apiKey, err = route.Upstream.ResolveToken()
+				if err != nil {
+					return nil, fmt.Errorf("route %q: %w", route.ID, err)
+				}
+			}
+			clientOptions := gemini.ClientOptions{
+				Provider:       route.Upstream.Provider,
+				GoogleAPIKey:   apiKey,
+				VertexProject:  route.Upstream.Vertex.Project,
+				VertexLocation: route.Upstream.Vertex.Location,
+				BaseURL:        route.Upstream.BaseURL,
+				Proxy:          route.Upstream.Proxy,
+			}
+			client, err := gemini.NewClient(context.Background(), clientOptions)
+			if err != nil {
+				return nil, fmt.Errorf("route %q: %w", route.ID, err)
+			}
+			serverOptions := gemini.ServerOptions{
+				DefaultModel:  route.Defaults.Model,
+				ThinkingLevel: route.Upstream.GenerateContent.ThinkingLevel,
+				ModelAliases:  route.Upstream.GenerateContent.ModelAliases,
+				Timeout:       route.Upstream.Timeout,
+			}
+			server, err := gemini.NewServer(client, serverOptions)
+			if err != nil {
+				return nil, fmt.Errorf("route %q: %w", route.ID, err)
+			}
+			routes[route.ID] = routeHandler{config: route, gemini: server}
+			continue
+		}
 		converter, err := converters.ForProvider(route.Upstream.Provider)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: %w", route.ID, err)
@@ -114,6 +155,21 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		gateway.handleFilesUpload(writer, request, fileRouteID)
 		return
 	}
+	if modelRouteID, isModelsPath := parseModelsPath(request.URL.Path); isModelsPath {
+		if route, exists := gateway.routes[modelRouteID]; exists && route.gemini != nil {
+			routeID = modelRouteID
+			if !authorize(request, route.config.Auth.Token) {
+				writeError(writer, http.StatusUnauthorized, "缺少有效的 Bearer token")
+				return
+			}
+			if request.Method != http.MethodGet {
+				writeError(writer, http.StatusMethodNotAllowed, "只支持 GET")
+				return
+			}
+			route.gemini.ServeModels(writer)
+			return
+		}
+	}
 
 	var ok bool
 	routeID, incomingProtocol, ok = parseAPIPath(request.URL.Path)
@@ -157,6 +213,15 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	if err != nil {
 		failure = err.Error()
 		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if route.gemini != nil {
+		upstreamProtocol = route.config.Upstream.Protocol
+		if incomingProtocol == convert.ProtocolChatCompletions {
+			route.gemini.ServeChat(writer, request, body)
+		} else {
+			route.gemini.ServeResponses(writer, request, body)
+		}
 		return
 	}
 
@@ -399,8 +464,16 @@ func parseAPIPath(path string) (string, convert.Protocol, bool) {
 	return "", "", false
 }
 
-func resolveUpstreamPath(provider string, protocol convert.Protocol) string {
-	if provider == "deepseek" && protocol == convert.ProtocolResponses {
+func parseModelsPath(path string) (string, bool) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "provider" || parts[1] == "" || parts[2] != "v1" || parts[3] != "models" {
+		return "", false
+	}
+	return parts[1], true
+}
+
+func resolveUpstreamPath(provider ir.Provider, protocol convert.Protocol) string {
+	if provider == ir.ProviderDeepSeek && protocol == convert.ProtocolResponses {
 		return "/responses"
 	}
 
