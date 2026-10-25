@@ -230,6 +230,53 @@ func responsesStatusFromChatFinish(finish string) (string, json.RawMessage) {
 	}
 }
 
+// isToolCallItem / isToolOutputItem 识别需要配对的工具 item。
+func isToolCallItem(itemType string) bool {
+	return itemType == "function_call" || itemType == "custom_tool_call"
+}
+
+func isToolOutputItem(itemType string) bool {
+	return itemType == "function_call_output" || itemType == "custom_tool_call_output"
+}
+
+// sanitizeToolItems 去掉上游会以 400 拒绝的工具 item：缺 name/call_id 的调用
+// （Invalid 'input[i].name': empty string）以及没有对应调用的结果。
+func sanitizeToolItems(items []ir.Item) ([]ir.Item, []string) {
+	invalid := false
+	for _, item := range items {
+		if isToolCallItem(item.Type) && (item.Name == "" || item.CallID == "") {
+			invalid = true
+			break
+		}
+	}
+	known := map[string]bool{}
+	clean := make([]ir.Item, 0, len(items))
+	var dropped []string
+	for _, item := range items {
+		switch {
+		case isToolCallItem(item.Type):
+			if item.Name == "" || item.CallID == "" {
+				dropped = append(dropped, "items."+item.Type+"(invalid)")
+				continue
+			}
+			known[item.CallID] = true
+			clean = append(clean, item)
+		case isToolOutputItem(item.Type):
+			if item.CallID == "" || !known[item.CallID] {
+				dropped = append(dropped, "items."+item.Type+"(unpaired)")
+				continue
+			}
+			clean = append(clean, item)
+		default:
+			clean = append(clean, item)
+		}
+	}
+	if !invalid && len(dropped) == 0 {
+		return items, nil
+	}
+	return clean, dropped
+}
+
 // unsupportedItem 报告 IR item 无法被目标协议表达。
 func unsupportedItem(protocol, itemType string) error {
 	if itemType == "" {

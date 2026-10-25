@@ -127,6 +127,7 @@ func (accumulator *Accumulator) Response() (*ir.Response, error) {
 	for _, index := range indices {
 		output = append(output, accumulator.items[index].build())
 	}
+	output, _ = sanitizeToolItems(output)
 	response := accumulator.response
 	response.Output = output
 	response.Usage = accumulator.usage

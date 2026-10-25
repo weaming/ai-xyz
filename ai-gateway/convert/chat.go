@@ -100,8 +100,10 @@ func (ChatCodec) ParseRequest(body []byte, options Options) (*ir.Request, error)
 	if err != nil {
 		return nil, err
 	}
+	items, droppedItems := sanitizeToolItems(items)
 	request.Instructions = instructions
 	request.Input = items
+	request.Dropped = append(request.Dropped, droppedItems...)
 	request.Dropped = append(request.Dropped, collectDropped(source, chatDroppableKeys)...)
 	request.Unknown = unknownKeys(source, chatRequestKeys)
 	if err := rejectUnknown(request.Unknown, "Chat"); err != nil {
@@ -495,6 +497,7 @@ func (ChatCodec) WriteRequest(request *ir.Request, options Options) ([]byte, err
 }
 
 func irMessagesToChat(request *ir.Request, options Options) ([]any, error) {
+	request.Input, _ = sanitizeToolItems(request.Input)
 	messages := []any{}
 	if text := joinParts(request.Instructions); text != "" {
 		messages = append(messages, map[string]any{"role": "system", "content": text})
@@ -727,6 +730,7 @@ func lastAssistantChatMessage(messages []any) map[string]any {
 
 // WriteResponse 把 IR 响应写成 Chat Completions 响应。
 func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, error) {
+	response.Output, _ = sanitizeToolItems(response.Output)
 	message := map[string]any{"role": "assistant"}
 	content := []string{}
 	refusals := []string{}
@@ -847,6 +851,7 @@ func (ChatCodec) ParseResponse(body []byte, options Options) (*ir.Response, erro
 			response.Output = append(response.Output, item)
 		}
 	}
+	response.Output, _ = sanitizeToolItems(response.Output)
 	return response, nil
 }
 

@@ -93,6 +93,8 @@ func (ResponsesCodec) ParseRequest(body []byte, options Options) (*ir.Request, e
 	if err != nil {
 		return nil, err
 	}
+	items, droppedItems := sanitizeToolItems(items)
+	request.Dropped = append(request.Dropped, droppedItems...)
 	for _, itemType := range projectedItems {
 		request.Dropped = append(request.Dropped, "items."+itemType)
 	}
@@ -466,6 +468,7 @@ func (ResponsesCodec) WriteRequest(request *ir.Request, options Options) ([]byte
 }
 
 func irItemsToResponses(items []ir.Item) []any {
+	items, _ = sanitizeToolItems(items)
 	result := make([]any, 0, len(items))
 	for _, item := range items {
 		if len(item.Raw) > 0 && (isBuiltInItemType(item.Type) || item.Type == "reasoning") {
@@ -766,11 +769,15 @@ func (ResponsesCodec) ParseResponse(body []byte, options Options) (*ir.Response,
 		converted.Status = stringValue(item["status"])
 		response.Output = append(response.Output, converted)
 	}
+	response.Output, _ = sanitizeToolItems(response.Output)
 	response.FinishReason = responsesFinishReason(response.Status, response.IncompleteDetails)
 	return response, nil
 }
 
 func irItemToResponses(item ir.Item, index int, options Options) (any, error) {
+	if isToolCallItem(item.Type) && (item.Name == "" || item.CallID == "") {
+		return nil, nil
+	}
 	if len(item.Raw) > 0 {
 		if payload := rawToAny(item.Raw); payload != nil {
 			return payload, nil

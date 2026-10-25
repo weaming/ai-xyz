@@ -243,3 +243,139 @@ func TestChatStreamUsageChunkFollowsFinish(t *testing.T) {
 		t.Fatalf("finish=%d usage=%d: %s", finishIndex, usageIndex, buffer.String())
 	}
 }
+
+// TestChatStreamToolNameArrivesLate 覆盖名字晚于参数片段到达时仍能补齐调用。
+func TestChatStreamToolNameArrivesLate(t *testing.T) {
+	stream := chatFrame(`{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"arguments":"{\"q\":"}}]}`, nil) +
+		chatFrame(`{"tool_calls":[{"index":0,"function":{"name":"lookup","arguments":"\"x\"}"}}]}`, "tool_calls") +
+		"data: [DONE]\n\n"
+
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolChatCompletions, convert.ProtocolResponses, strings.NewReader(stream), &builder, convert.Options{}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	output := builder.String()
+	if strings.Contains(output, `"name":""`) {
+		t.Fatalf("不应写出空 name: %s", output)
+	}
+	if !strings.Contains(output, `"name":"lookup"`) {
+		t.Fatalf("名字应在到达后补发: %s", output)
+	}
+
+	// Chat 目标同样要补齐，且参数完整。
+	var chat strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolChatCompletions, convert.ProtocolChatCompletions, strings.NewReader(stream), &chat, convert.Options{}); err != nil {
+		t.Fatalf("同协议流应透传: %v", err)
+	}
+	aggregated, err := openaiConverter().AggregateStream(convert.ProtocolChatCompletions, convert.ProtocolChatCompletions, strings.NewReader(stream), convert.Options{})
+	if err != nil {
+		t.Fatalf("聚合失败: %v", err)
+	}
+	if !strings.Contains(string(aggregated), `"name":"lookup"`) {
+		t.Fatalf("聚合结果缺少 name: %s", aggregated)
+	}
+}
+
+// TestResponsesStreamResolvesToolIdentity 覆盖 OpenAI 的 arguments 增量只带 item_id 的情况。
+func TestResponsesStreamResolvesToolIdentity(t *testing.T) {
+	stream := "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"m\",\"created_at\":1700000000}}\n\n" +
+		"event: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_1\",\"model\":\"m\"}}\n\n" +
+		"event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"lookup\",\"arguments\":\"\"}}\n\n" +
+		"data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"output_index\":0,\"delta\":\"{\\\"q\\\":\"}\n\n" +
+		"data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"output_index\":0,\"delta\":\"\\\"x\\\"}\"}\n\n" +
+		"data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_1\",\"output_index\":0,\"arguments\":\"{\\\"q\\\":\\\"x\\\"}\"}\n\n" +
+		"event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\\\"x\\\"}\",\"status\":\"completed\"}}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\"}}\n\n"
+
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), &builder, convert.Options{}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	output := builder.String()
+	if strings.Contains(output, `"name":""`) || strings.Contains(output, `"id":""`) {
+		t.Fatalf("工具调用身份丢失: %s", output)
+	}
+	if strings.Count(output, `"role":"assistant"`) != 1 {
+		t.Fatalf("response.created 与 in_progress 只应创建一个响应: %s", output)
+	}
+	aggregated, err := openaiConverter().AggregateStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), convert.Options{})
+	if err != nil {
+		t.Fatalf("聚合失败: %v", err)
+	}
+	var chat map[string]any
+	if err := json.Unmarshal(aggregated, &chat); err != nil {
+		t.Fatalf("聚合输出不是合法 JSON: %v", err)
+	}
+	message := chat["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	calls := message["tool_calls"].([]any)
+	if len(calls) != 1 {
+		t.Fatalf("应只有一个工具调用: %#v", calls)
+	}
+	call := calls[0].(map[string]any)
+	if call["id"] != "call_1" || call["function"].(map[string]any)["name"] != "lookup" {
+		t.Fatalf("工具调用身份错误: %#v", call)
+	}
+}
+
+// responsesFrame 构造 Responses SSE 帧，event 为空时只发 data。
+func responsesFrame(event, data string) string {
+	if event == "" {
+		return "data: " + data + "\n\n"
+	}
+	return "event: " + event + "\ndata: " + data + "\n\n"
+}
+
+// dataFrame 构造只有 data 的 SSE 帧。
+func dataFrame(data string) string { return "data: " + data + "\n\n" }
+
+// TestResponsesStreamToolNameInItemDone 覆盖名字只在 output_item.done 出现的上游：
+// 参数片段照发但不写 name 字段，名字到达后单独补一帧，不重复参数。
+func TestResponsesStreamToolNameInItemDone(t *testing.T) {
+	stream := responsesFrame("response.created", `{"type":"response.created","response":{"id":"resp_1","model":"m","created_at":1}}`) +
+		responsesFrame("response.output_item.added", `{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","arguments":""}}`) +
+		dataFrame(`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":1}"}`) +
+		responsesFrame("response.output_item.done", `{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup","arguments":"{\"q\":1}"}}`) +
+		responsesFrame("response.completed", `{"type":"response.completed","response":{"id":"resp_1","status":"completed"}}`)
+
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), &builder, convert.Options{}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	output := builder.String()
+	if strings.Contains(output, `"name":""`) {
+		t.Fatalf("不应写出空 name: %s", output)
+	}
+	if !strings.Contains(output, `"arguments":"{\"q\":1}"`) {
+		t.Fatalf("参数片段应照发: %s", output)
+	}
+	if strings.Count(output, `"name":"lookup"`) != 1 {
+		t.Fatalf("名字应只补一次: %s", output)
+	}
+	// 补名字的那一帧不能重复参数，否则覆盖式合并的客户端会把参数写坏。
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, `"name":"lookup"`) && strings.Contains(line, "arguments") {
+			t.Fatalf("补名字的帧不应带参数: %s", line)
+		}
+	}
+}
+
+// TestResponsesStreamOmitsUnknownToolName 覆盖全程没有名字的调用：片段照发，
+// 但绝不写 name 字段（空串会被下游当成真名存进历史）。
+func TestResponsesStreamOmitsUnknownToolName(t *testing.T) {
+	stream := responsesFrame("response.created", `{"type":"response.created","response":{"id":"resp_1","model":"m","created_at":1}}`) +
+		responsesFrame("response.output_item.added", `{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","arguments":""}}`) +
+		dataFrame(`{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"q\":1}"}`) +
+		responsesFrame("response.completed", `{"type":"response.completed","response":{"id":"resp_1","status":"completed"}}`)
+
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), &builder, convert.Options{}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	output := builder.String()
+	if strings.Contains(output, `"name":""`) || strings.Contains(output, `"name"`) {
+		t.Fatalf("不应写出 name 字段: %s", output)
+	}
+	if !strings.Contains(output, `"arguments":"{\"q\":1}"`) || !strings.Contains(output, `"id":"call_1"`) {
+		t.Fatalf("调用片段应照发: %s", output)
+	}
+}

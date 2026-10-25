@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
@@ -223,8 +224,9 @@ func (ChatCodec) NewStreamWriter(writer io.Writer, options Options) StreamWriter
 		options:   options,
 		acc:       NewAccumulator(),
 		toolIndex: map[string]int{},
-		toolDelta: map[string]bool{},
-		toolName:  map[string]string{},
+		toolID:    map[string]string{},
+		toolNamed: map[string]bool{},
+		toolArgs:  map[string]bool{},
 		id:        newID("chatcmpl-"),
 	}
 }
@@ -238,9 +240,11 @@ type chatStreamWriter struct {
 	model     string
 	created   int64
 	toolCount int
-	toolIndex map[string]int
-	toolDelta map[string]bool
-	toolName  map[string]string
+	toolIndex map[string]int    // 调用 → Chat 的 tool_calls index
+	toolID    map[string]string // 调用 → 下发的 id（上游缺 id 时造一个）
+	toolNamed map[string]bool   // 真实名字已下发，之后不再重复
+	toolArgs  map[string]bool   // 参数已下发
+	toolSent  map[string]bool   // 已下发过至少一个片段
 	usage     *ir.Usage
 }
 
@@ -267,26 +271,16 @@ func (writer *chatStreamWriter) Write(event ir.StreamEvent) error {
 	case ir.EventRefusalDelta:
 		return writer.writeChunk(map[string]any{"refusal": event.Refusal}, nil)
 	case ir.EventToolCallStart:
-		index := writer.toolSlot(event)
-		writer.toolName[event.CallID] = event.ToolName
-		call := writer.toolCall(index, event.CallID, event.ToolType, event.ToolName, event.Arguments)
-		if event.Arguments != "" {
-			writer.toolDelta[event.CallID] = true
-		}
-		return writer.writeChunk(map[string]any{"tool_calls": []any{call}}, nil)
+		return writer.writeTool(event, event.ToolName, event.Arguments)
 	case ir.EventToolArgumentsDelta:
-		index := writer.toolSlot(event)
-		writer.toolDelta[event.CallID] = true
-		call := writer.toolCall(index, event.CallID, event.ToolType, event.ToolName, event.Delta)
-		return writer.writeChunk(map[string]any{"tool_calls": []any{call}}, nil)
+		return writer.writeTool(event, event.ToolName, event.Delta)
 	case ir.EventToolArgumentsDone:
-		if writer.toolDelta[event.CallID] {
-			return nil
+		value := event.Arguments
+		if writer.toolArgs[toolKey(event.CallID, event.OutputIndex)] {
+			// 参数已随增量下发，这里只补可能后到的名字。
+			value = ""
 		}
-		writer.toolDelta[event.CallID] = true
-		index := writer.toolSlot(event)
-		call := writer.toolCall(index, event.CallID, event.ToolType, event.ToolName, event.Arguments)
-		return writer.writeChunk(map[string]any{"tool_calls": []any{call}}, nil)
+		return writer.writeTool(event, event.ToolName, value)
 	case ir.EventOutputItemDone:
 		return writer.writeItemTool(event)
 	case ir.EventUsage:
@@ -299,54 +293,78 @@ func (writer *chatStreamWriter) Write(event ir.StreamEvent) error {
 	return nil
 }
 
+// writeItemTool 用完整 item 补齐调用：参数已下发时只补名字，否则整条发出。
 func (writer *chatStreamWriter) writeItemTool(event ir.StreamEvent) error {
 	item := event.Item
 	if item == nil || (item.Type != "function_call" && item.Type != "custom_tool_call") {
 		return nil
 	}
-	if writer.toolDelta[item.CallID] {
-		return nil
-	}
-	writer.toolDelta[item.CallID] = true
 	toolType := "function"
 	value := item.Arguments
 	if item.Type == "custom_tool_call" {
 		toolType = "custom"
 		value = item.Input
 	}
-	index := writer.toolSlot(ir.StreamEvent{CallID: item.CallID, ToolType: toolType, ToolName: item.Name})
-	call := writer.toolCall(index, item.CallID, toolType, item.Name, value)
+	if writer.toolArgs[toolKey(item.CallID, event.OutputIndex)] {
+		value = ""
+	}
+	return writer.writeTool(ir.StreamEvent{CallID: item.CallID, OutputIndex: event.OutputIndex, ToolType: toolType}, item.Name, value)
+}
+
+// toolKey 是写端的调用状态键：上游给了 call_id 就用它，没给就按 output_index 区分。
+func toolKey(callID string, outputIndex int) string {
+	if callID != "" {
+		return "id:" + callID
+	}
+	return "at:" + strconv.Itoa(outputIndex)
+}
+
+// writeTool 写一条 tool_calls 片段：名字未知时省略 name 字段（不写空串），
+// 名字首次可用时随该片段补发一次；参数按增量下发，空值不写字段。
+func (writer *chatStreamWriter) writeTool(event ir.StreamEvent, name, value string) error {
+	key := toolKey(event.CallID, event.OutputIndex)
+	index, exists := writer.toolIndex[key]
+	if !exists {
+		index = writer.toolCount
+		writer.toolCount++
+		writer.toolIndex[key] = index
+	}
+	argField := "arguments"
+	if event.ToolType == "custom" {
+		argField = "input"
+	}
+	fields := map[string]any{}
+	if name != "" && !writer.toolNamed[key] {
+		writer.toolNamed[key] = true
+		fields["name"] = name
+	}
+	if value != "" {
+		writer.toolArgs[key] = true
+		fields[argField] = value
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	call := map[string]any{"index": index, "id": writer.callID(key, event.CallID), "type": "function"}
+	if event.ToolType == "custom" {
+		call["type"] = "custom"
+		call["custom"] = fields
+	} else {
+		call["function"] = fields
+	}
 	return writer.writeChunk(map[string]any{"tool_calls": []any{call}}, nil)
 }
 
-func (writer *chatStreamWriter) toolSlot(event ir.StreamEvent) int {
-	if index, exists := writer.toolIndex[event.CallID]; exists {
-		return index
+// callID 是下发给下游的调用 id，上游没给时造一个并保持一致。
+func (writer *chatStreamWriter) callID(key, callID string) string {
+	if id, exists := writer.toolID[key]; exists {
+		return id
 	}
-	index := writer.toolCount
-	writer.toolCount++
-	writer.toolIndex[event.CallID] = index
-	if event.ToolName != "" {
-		writer.toolName[event.CallID] = event.ToolName
+	if callID == "" {
+		callID = newID("call_")
 	}
-	return index
-}
-
-func (writer *chatStreamWriter) toolCall(index int, callID, toolType, name, value string) map[string]any {
-	if toolType == "custom" {
-		return map[string]any{
-			"index":  index,
-			"id":     callID,
-			"type":   "custom",
-			"custom": map[string]any{"name": name, "input": value},
-		}
-	}
-	return map[string]any{
-		"index":    index,
-		"id":       callID,
-		"type":     "function",
-		"function": map[string]any{"name": name, "arguments": value},
-	}
+	writer.toolID[key] = callID
+	return callID
 }
 
 // Close 补齐 finish chunk、usage chunk 与 [DONE]，并返回聚合响应。

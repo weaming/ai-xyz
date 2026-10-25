@@ -80,5 +80,6 @@
 5. 未知事件可以保留为 opaque，但不得把未知事件当成完成事件。
 6. 转换状态只属于一次请求，不能跨请求复用；未来若支持 `previous_response_id`，需要增加可持久化 conversation store。
 7. 流聚合必须读到 Chat `[DONE]` 或 Responses `completed`、`failed`、`incomplete` 终态；EOF 不能作为成功完成。同协议聚合走 Codec 自己的实现（`AggregateCodec`），保留 chunk 级 `system_fingerprint`/`service_tier` 与 Responses 终态 `response` 对象的额外字段；跨协议聚合才用 IR 累加器重建。
-8. 工具结果按 `call_id` 关联原调用；custom tool 结果通过 `tool_call_type: custom` 保留类型，流式参数优先使用 delta，缺失时从 done item 补齐。
+8. 工具结果按 `call_id` 关联原调用；custom tool 结果通过 `tool_call_type: custom` 保留类型，流式参数优先使用 delta，缺失时从 done item 补齐。缺 `name`/`call_id` 的调用与失去配对的输出会被上游以 400 拒绝（`Invalid 'input[i].name': empty string`），转换时丢弃并记入 `Request.Dropped`。
+   流式写端不攒帧：名字未知时省略 `name` 字段（绝不写 `""`，下游按 index 合并时会把它当成真名），参数照常按增量下发；名字首次可用时随该片段补发一次，且该帧不带参数，避免覆盖式合并的客户端把已收参数写坏；上游没给 `call_id` 时生成一个并保持一致。Responses 输出的 item 结构要求 `name`，那条路径只能等名字到齐再发 `output_item.added`（缓存参数），否则会写出非法 item。
 9. 目标协议不表达的调参/元数据字段（`text.verbosity`、`reasoning.summary`、`include`、`prompt_cache_*` 等）丢弃并记入 `Request.Dropped`；会改变语义的字段（会话状态、内置工具 item、`annotations` 等）报错。`service_tier` 双向映射，`system_fingerprint` 只属于 Chat，转出时按元数据丢弃。

@@ -512,3 +512,64 @@ func TestSealedReasoningKeepsOriginalItem(t *testing.T) {
 		t.Fatalf("可见 reasoning 丢失: %#v", message)
 	}
 }
+
+// TestInvalidToolCallsAreDropped 覆盖上游会拒绝的空 name/call_id 工具调用。
+func TestInvalidToolCallsAreDropped(t *testing.T) {
+	// chat 历史里 assistant 的 tool_call 缺 name，以及没有对应调用的 tool 消息
+	body := `{"messages":[
+		{"role":"user","content":"hi"},
+		{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"call_1","content":"ok"},
+		{"role":"tool","tool_call_id":"call_missing","content":"orphan"}
+	]}`
+	target := convertRequest(t, convert.ProtocolChatCompletions, convert.ProtocolResponses, body, convert.Options{})
+	text := string(mustJSONBytes(t, target))
+	if strings.Contains(text, `"name":""`) {
+		t.Fatalf("不应写出空 name: %s", text)
+	}
+	if strings.Contains(text, "call_1") || strings.Contains(text, "call_missing") {
+		t.Fatalf("非法调用与其结果都应丢弃: %s", text)
+	}
+
+	responsesBody := `{"input":[
+		{"type":"message","role":"user","content":"hi"},
+		{"type":"function_call","call_id":"c1","name":"","arguments":"{}"},
+		{"type":"function_call_output","call_id":"c1","output":"ok"},
+		{"type":"function_call","call_id":"c2","name":"f","arguments":"{}"}
+	]}`
+	converted := convertRequest(t, convert.ProtocolResponses, convert.ProtocolChatCompletions, responsesBody, convert.Options{})
+	text = string(mustJSONBytes(t, converted))
+	if strings.Contains(text, `"name":""`) || strings.Contains(text, "c1") {
+		t.Fatalf("空 name 调用与其结果应丢弃: %s", text)
+	}
+	request, err := convert.ResponsesCodec{}.ParseRequest([]byte(responsesBody), convert.Options{})
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if dropped := strings.Join(request.Dropped, ","); !strings.Contains(dropped, "invalid") || !strings.Contains(dropped, "unpaired") {
+		t.Fatalf("Dropped = %v", request.Dropped)
+	}
+}
+
+// TestChatStreamUnnamedToolIsNotEmitted 覆盖流式里始终没有 name 的工具调用不写出空 name。
+func TestChatStreamUnnamedToolIsNotEmitted(t *testing.T) {
+	stream := chatFrame(`{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"arguments":"{}"}}]}`, nil) +
+		chatFrame(`{}`, "tool_calls") +
+		"data: [DONE]\n\n"
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolChatCompletions, convert.ProtocolResponses, strings.NewReader(stream), &builder, convert.Options{}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	if strings.Contains(builder.String(), `"name":""`) {
+		t.Fatalf("流式输出不应带空 name: %s", builder.String())
+	}
+}
+
+func mustJSONBytes(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("编码失败: %v", err)
+	}
+	return data
+}

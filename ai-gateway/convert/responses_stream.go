@@ -1,9 +1,11 @@
 package convert
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/weaming/ai-xyz/ai-gateway/ir"
@@ -23,6 +25,38 @@ func (ResponsesCodec) ReadStream(reader io.Reader, options Options, emit func(ir
 
 type responsesStreamReader struct {
 	terminal bool
+	created  bool
+	tools    map[string]*responsesToolIdentity
+}
+
+// responsesToolIdentity 记录 item_id → 工具身份，OpenAI 的 arguments 增量事件只带
+// item_id/output_index，不带 call_id 和 name。
+type responsesToolIdentity struct {
+	callID   string
+	name     string
+	toolType string
+}
+
+func (reader *responsesStreamReader) tool(itemID string, outputIndex int, callID, toolType string) *responsesToolIdentity {
+	key := itemID
+	if key == "" {
+		key = "index:" + strconv.Itoa(outputIndex)
+	}
+	if reader.tools == nil {
+		reader.tools = map[string]*responsesToolIdentity{}
+	}
+	identity, exists := reader.tools[key]
+	if !exists {
+		identity = &responsesToolIdentity{toolType: toolType}
+		reader.tools[key] = identity
+	}
+	if callID != "" {
+		identity.callID = callID
+	}
+	if identity.toolType == "" {
+		identity.toolType = toolType
+	}
+	return identity
 }
 
 func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.StreamEvent) error) error {
@@ -33,13 +67,18 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 	if err != nil {
 		return fmt.Errorf("解析 Responses SSE: %w", err)
 	}
-	eventType := stringValue(data["type"])
-	if eventType == "" {
-		eventType = frame.Event
+	eventTypeName := stringValue(data["type"])
+	if eventTypeName == "" {
+		eventTypeName = frame.Event
 	}
+	eventType := eventTypeName
 	outputIndex := int(intValue(data["output_index"]))
 	switch eventType {
 	case "response.created", "response.in_progress":
+		if reader.created {
+			return nil
+		}
+		reader.created = true
 		response := objectMap(data["response"])
 		return emit(ir.StreamEvent{
 			Type:       ir.EventCreated,
@@ -47,20 +86,16 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 			Model:      stringValue(response["model"]),
 			CreatedAt:  intValue(response["created_at"]),
 		})
-	case "response.output_item.added":
-		item, err := responsesItemToIR(objectMap(data["item"]))
+	case "response.output_item.added", "response.output_item.done":
+		item, err := reader.itemEvent(data, outputIndex)
 		if err != nil {
 			return err
 		}
-		item.ID = stringValue(objectMap(data["item"])["id"])
-		return emit(ir.StreamEvent{Type: ir.EventOutputItemAdded, OutputIndex: outputIndex, Item: &item})
-	case "response.output_item.done":
-		item, err := responsesItemToIR(objectMap(data["item"]))
-		if err != nil {
-			return err
+		eventType := ir.EventOutputItemAdded
+		if eventTypeName == "response.output_item.done" {
+			eventType = ir.EventOutputItemDone
 		}
-		item.ID = stringValue(objectMap(data["item"])["id"])
-		return emit(ir.StreamEvent{Type: ir.EventOutputItemDone, OutputIndex: outputIndex, Item: &item})
+		return emit(ir.StreamEvent{Type: eventType, OutputIndex: outputIndex, Item: item})
 	case "response.output_text.delta":
 		return emit(ir.StreamEvent{Type: ir.EventTextDelta, OutputIndex: outputIndex, ContentIndex: int(intValue(data["content_index"])), Delta: stringValue(data["delta"])})
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
@@ -68,13 +103,17 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 	case "response.refusal.delta":
 		return emit(ir.StreamEvent{Type: ir.EventRefusalDelta, OutputIndex: outputIndex, ContentIndex: int(intValue(data["content_index"])), Refusal: stringValue(data["delta"])})
 	case "response.function_call_arguments.delta":
-		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDelta, OutputIndex: outputIndex, CallID: stringValue(data["call_id"]), ToolType: "function", Delta: stringValue(data["delta"])})
+		identity := reader.tool(stringValue(data["item_id"]), outputIndex, stringValue(data["call_id"]), "function")
+		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDelta, OutputIndex: outputIndex, CallID: identity.callID, ToolName: identity.name, ToolType: identity.toolType, Delta: stringValue(data["delta"])})
 	case "response.custom_tool_call_input.delta":
-		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDelta, OutputIndex: outputIndex, CallID: stringValue(data["call_id"]), ToolType: "custom", Delta: stringValue(data["delta"])})
+		identity := reader.tool(stringValue(data["item_id"]), outputIndex, stringValue(data["call_id"]), "custom")
+		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDelta, OutputIndex: outputIndex, CallID: identity.callID, ToolName: identity.name, ToolType: identity.toolType, Delta: stringValue(data["delta"])})
 	case "response.function_call_arguments.done":
-		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDone, OutputIndex: outputIndex, CallID: stringValue(data["call_id"]), ToolType: "function", Arguments: stringValue(data["arguments"])})
+		identity := reader.tool(stringValue(data["item_id"]), outputIndex, stringValue(data["call_id"]), "function")
+		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDone, OutputIndex: outputIndex, CallID: identity.callID, ToolName: identity.name, ToolType: identity.toolType, Arguments: stringValue(data["arguments"])})
 	case "response.custom_tool_call_input.done":
-		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDone, OutputIndex: outputIndex, CallID: stringValue(data["call_id"]), ToolType: "custom", Arguments: stringValue(data["input"])})
+		identity := reader.tool(stringValue(data["item_id"]), outputIndex, stringValue(data["call_id"]), "custom")
+		return emit(ir.StreamEvent{Type: ir.EventToolArgumentsDone, OutputIndex: outputIndex, CallID: identity.callID, ToolName: identity.name, ToolType: identity.toolType, Arguments: stringValue(data["input"])})
 	case "response.completed", "response.incomplete", "response.failed":
 		reader.terminal = true
 		response := objectMap(data["response"])
@@ -101,6 +140,23 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 		}
 		return nil
 	}
+}
+
+// itemEvent 解析 item 并把工具身份登记下来，供只带 item_id 的 arguments 事件复用。
+func (reader *responsesStreamReader) itemEvent(data map[string]json.RawMessage, outputIndex int) (*ir.Item, error) {
+	rawItem := objectMap(data["item"])
+	item, err := responsesItemToIR(rawItem)
+	if err != nil {
+		return nil, err
+	}
+	item.ID = stringValue(rawItem["id"])
+	if isToolCallItem(item.Type) {
+		identity := reader.tool(item.ID, outputIndex, item.CallID, toolTypeOf(item.Type))
+		if item.Name != "" {
+			identity.name = item.Name
+		}
+	}
+	return &item, nil
 }
 
 func isUnsupportedResponsesEvent(eventType string) bool {
@@ -232,11 +288,28 @@ func (writer *responsesStreamWriter) Write(event ir.StreamEvent) error {
 		})
 	case ir.EventToolCallStart, ir.EventToolArgumentsDelta:
 		tool := writer.toolState(event)
-		if err := writer.ensureToolAdded(event, tool); err != nil {
-			return err
-		}
 		if event.Type == ir.EventToolArgumentsDelta {
 			tool.buffer.WriteString(event.Delta)
+		}
+		if !tool.added {
+			// 名字还没到齐时不发 item 事件，否则会写出上游/客户端都拒绝的空 name。
+			if err := writer.ensureToolAdded(event, tool); err != nil {
+				return err
+			}
+			if !tool.added {
+				return nil
+			}
+			if tool.buffer.Len() == 0 {
+				return nil
+			}
+			return writer.frame(writer.toolEvent(tool.kind, "delta"), map[string]any{
+				"item_id":      writer.toolItemID(event.OutputIndex),
+				"output_index": event.OutputIndex,
+				"call_id":      tool.callID,
+				"delta":        tool.buffer.String(),
+			})
+		}
+		if event.Type == ir.EventToolArgumentsDelta {
 			return writer.frame(writer.toolEvent(tool.kind, "delta"), map[string]any{
 				"item_id":      writer.toolItemID(event.OutputIndex),
 				"output_index": event.OutputIndex,
@@ -273,7 +346,11 @@ func (writer *responsesStreamWriter) Write(event ir.StreamEvent) error {
 			tool.argsDone = true
 			tool.itemDone = true
 		}
-		return writer.frame("response.output_item.done", map[string]any{"output_index": event.OutputIndex, "item": itemPayload(*event.Item, event.OutputIndex)})
+		payload := itemPayload(*event.Item, event.OutputIndex)
+		if payload == nil {
+			return nil
+		}
+		return writer.frame("response.output_item.done", map[string]any{"output_index": event.OutputIndex, "item": payload})
 	case ir.EventUsage:
 		writer.usage = event.Usage
 	case ir.EventCompleted:
@@ -431,7 +508,7 @@ func (writer *responsesStreamWriter) itemAdded(outputIndex int, item ir.Item) er
 
 // ensureToolAdded 保证工具 item 有 output_item.added 事件，参数增量才不会孤立出现。
 func (writer *responsesStreamWriter) ensureToolAdded(event ir.StreamEvent, tool *responsesToolState) error {
-	if tool.added {
+	if tool.added || tool.name == "" {
 		return nil
 	}
 	tool.added = true
@@ -469,6 +546,10 @@ func (writer *responsesStreamWriter) closeTools() error {
 	sort.Ints(indices)
 	for _, index := range indices {
 		tool := writer.tools[index]
+		if tool.name == "" {
+			// 始终没有 name 的调用无法表达，整个 item 跳过。
+			continue
+		}
 		arguments := tool.buffer.String()
 		if !tool.argsDone {
 			tool.argsDone = true
@@ -489,7 +570,11 @@ func (writer *responsesStreamWriter) closeTools() error {
 			item.Type = "custom_tool_call"
 			item.Input = arguments
 		}
-		if err := writer.frame("response.output_item.done", map[string]any{"output_index": index, "item": itemPayload(item, index)}); err != nil {
+		payload := itemPayload(item, index)
+		if payload == nil {
+			continue
+		}
+		if err := writer.frame("response.output_item.done", map[string]any{"output_index": index, "item": payload}); err != nil {
 			return err
 		}
 	}
@@ -533,6 +618,9 @@ func (writer *responsesStreamWriter) frame(event string, payload map[string]any)
 }
 
 func itemPayload(item ir.Item, index int) map[string]any {
+	if isToolCallItem(item.Type) && (item.Name == "" || item.CallID == "") {
+		return nil
+	}
 	if len(item.Raw) > 0 {
 		if payload, ok := rawToAny(item.Raw).(map[string]any); ok {
 			return payload
