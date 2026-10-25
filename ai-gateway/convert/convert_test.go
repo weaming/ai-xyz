@@ -398,6 +398,49 @@ func TestAnnotationsSurviveResponses(t *testing.T) {
 	}
 }
 
+// TestForwardBuiltInToolsKeepsHostedDefinitions 覆盖 route 开关决定托管工具定义是否传给 Responses 上游。
+func TestForwardBuiltInToolsKeepsHostedDefinitions(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}},{"type":"web_search","search_context_size":"high"}]}`
+	forwarded := convertRequest(t, convert.ProtocolChatCompletions, convert.ProtocolResponses, body, convert.Options{ForwardBuiltInTools: true})
+	tools, ok := forwarded["tools"].([]any)
+	if !ok || len(tools) != 2 {
+		t.Fatalf("托管工具应原样转发: %#v", forwarded["tools"])
+	}
+	hosted, ok := tools[1].(map[string]any)
+	if !ok || hosted["type"] != "web_search" || hosted["search_context_size"] != "high" {
+		t.Fatalf("托管工具定义被改写: %#v", tools[1])
+	}
+	cleaned := convertRequest(t, convert.ProtocolChatCompletions, convert.ProtocolResponses, body, convert.Options{})
+	if kept, ok := cleaned["tools"].([]any); ok && len(kept) != 1 {
+		t.Fatalf("未开启转发时应清理托管工具: %#v", cleaned["tools"])
+	}
+}
+
+// TestForwardBuiltInToolsProjectsAnnotationsToChat 覆盖 annotation 原样投影与字符坐标平移。
+func TestForwardBuiltInToolsProjectsAnnotationsToChat(t *testing.T) {
+	body := `{"id":"resp_1","created_at":1700000000,"model":"m","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ab"},{"type":"output_text","text":"cd","annotations":[{"type":"url_citation","url":"https://example.com","title":"t","start_index":0,"end_index":2},{"type":"file_citation","file_id":"file_1","filename":"a.pdf","index":0}]}]}]}`
+	chat := convertResponse(t, convert.ProtocolResponses, convert.ProtocolChatCompletions, body, convert.Options{ForwardBuiltInTools: true})
+	message := chat["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	if message["content"] != "abcd" {
+		t.Fatalf("正文拼接错误: %#v", message["content"])
+	}
+	annotations, ok := message["annotations"].([]any)
+	if !ok || len(annotations) != 2 {
+		t.Fatalf("annotations 数量错误: %#v", message["annotations"])
+	}
+	citation := annotations[0].(map[string]any)
+	if citation["start_index"] != float64(2) || citation["end_index"] != float64(4) || citation["url"] != "https://example.com" || citation["title"] != "t" {
+		t.Fatalf("citation 未平移到拼接坐标: %#v", citation)
+	}
+	fileCitation := annotations[1].(map[string]any)
+	if fileCitation["type"] != "file_citation" || fileCitation["file_id"] != "file_1" || fileCitation["filename"] != "a.pdf" {
+		t.Fatalf("文件级 citation 应原样保留: %#v", fileCitation)
+	}
+	if _, err := openaiConverter().ConvertResponse(convert.ProtocolResponses, convert.ProtocolChatCompletions, []byte(body), convert.Options{}); err == nil {
+		t.Fatal("未开启转发时应拒绝 annotations")
+	}
+}
+
 // TestServiceTierAndFingerprintRoundTrip 覆盖 service_tier 与 system_fingerprint 的映射。
 func TestServiceTierAndFingerprintRoundTrip(t *testing.T) {
 	body := `{"id":"chatcmpl-1","created":1700000000,"model":"m","service_tier":"scale","system_fingerprint":"fp_1","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`

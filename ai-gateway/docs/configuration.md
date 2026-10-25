@@ -29,11 +29,16 @@ routes:
       model: gpt-5.6-luna
     conversion:
       emit_reasoning_content: true
+      forward_builtin_tools: true
 ```
 
-省略 `conversion` 或其中字段时默认 `emit_reasoning_content: true`；如需关闭 reasoning content，可显式设置 `emit_reasoning_content: false`。旧配置里的 `conversion.mode` 已移除，YAML 读取时会被忽略（它此前只影响错误文案，不影响转换行为）。
+省略 `conversion` 或其中字段时默认 `emit_reasoning_content: true`、`forward_builtin_tools: false`。Responses 上游 route 开启 `forward_builtin_tools` 后，网关会把下游 Chat 请求 `tools` 数组中的托管工具定义（如 `web_search`）原样保留并交给上游；下游需要显式传入工具，网关不会自动注入。此配置只适用于 Responses 上游。
 
-转换策略固定：能表达就保真；调参/元数据（`store`、`metadata`、`service_tier`、`include`、`prompt_cache_*`、`safety_identifier`、`user`、`seed`、`text.verbosity`、`reasoning.summary` 等）目标协议不表达时丢弃并记入日志（gemini route 的完成日志带 `dropped=`）；会话状态、内置工具、`annotations`、custom tool 转 Gemini 等会改变语义的字段返回 400。
+Responses 上游 route 启用 `forward_builtin_tools` 后，`output_text.annotations` 会在跨协议转成 Chat 时整条原样映射到 `message.annotations`（字符级 citation 的区间平移到拼接正文坐标），不因 annotation 类型而报错；流式 Chat 输出会在文本末尾附上来源 URL，供只读取 `delta.content` 的客户端显示。
+
+如需关闭 reasoning content，可显式设置 `emit_reasoning_content: false`。旧配置里的 `conversion.mode` 已移除，YAML 读取时会被忽略（它此前只影响错误文案，不影响转换行为）。
+
+转换策略固定：能表达就保真；调参/元数据（`store`、`metadata`、`service_tier`、`include`、`prompt_cache_*`、`safety_identifier`、`user`、`seed`、`text.verbosity`、`reasoning.summary` 等）目标协议不表达时丢弃并记入日志（gemini route 的完成日志带 `dropped=`）；会话状态、未启用转发的内置工具与 `annotations`、custom tool 转 Gemini 等会改变语义的字段返回 400。
 
 `routes[].id` 只能包含字母、数字、`.`、`_`、`-`，并且必须唯一。以上配置提供：
 

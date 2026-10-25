@@ -13,7 +13,7 @@ import (
 
 // ReadStream 把 Responses SSE 解析成 IR 事件。
 func (ResponsesCodec) ReadStream(reader io.Reader, options Options, emit func(ir.StreamEvent) error) error {
-	state := &responsesStreamReader{}
+	state := &responsesStreamReader{forwardBuiltIn: options.ForwardBuiltInTools}
 	if err := ReadSSE(reader, func(frame SSEFrame) error { return state.consume(frame, emit) }); err != nil {
 		return err
 	}
@@ -24,9 +24,10 @@ func (ResponsesCodec) ReadStream(reader io.Reader, options Options, emit func(ir
 }
 
 type responsesStreamReader struct {
-	terminal bool
-	created  bool
-	tools    map[string]*responsesToolIdentity
+	terminal       bool
+	created        bool
+	forwardBuiltIn bool
+	tools          map[string]*responsesToolIdentity
 }
 
 // responsesToolIdentity 记录 item_id → 工具身份，OpenAI 的 arguments 增量事件只带
@@ -98,6 +99,8 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 		return emit(ir.StreamEvent{Type: eventType, OutputIndex: outputIndex, Item: item})
 	case "response.output_text.delta":
 		return emit(ir.StreamEvent{Type: ir.EventTextDelta, OutputIndex: outputIndex, ContentIndex: int(intValue(data["content_index"])), Delta: stringValue(data["delta"])})
+	case "response.output_text.annotation.added":
+		return emit(ir.StreamEvent{Type: ir.EventAnnotationAdded, OutputIndex: outputIndex, ContentIndex: int(intValue(data["content_index"])), Annotation: cloneRaw(data["annotation"])})
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		return emit(ir.StreamEvent{Type: ir.EventReasoningDelta, OutputIndex: outputIndex, ContentIndex: int(intValue(data["content_index"])), Delta: stringValue(data["delta"])})
 	case "response.refusal.delta":
@@ -135,6 +138,10 @@ func (reader *responsesStreamReader) consume(frame SSEFrame, emit func(ir.Stream
 			Raw:               cloneRaw(data["response"]),
 		})
 	default:
+		// 托管工具的执行进度事件在 Chat 下游没有对应表达，开启转发时丢弃而不是中断。
+		if isHostedToolEvent(eventType) && reader.forwardBuiltIn {
+			return nil
+		}
 		if isUnsupportedResponsesEvent(eventType) {
 			return fmt.Errorf("暂不支持 Responses stream event %q", eventType)
 		}
@@ -159,22 +166,28 @@ func (reader *responsesStreamReader) itemEvent(data map[string]json.RawMessage, 
 	return &item, nil
 }
 
-func isUnsupportedResponsesEvent(eventType string) bool {
-	for _, prefix := range []string{
-		"response.audio.",
-		"response.web_search_call.",
-		"response.file_search_call.",
-		"response.code_interpreter_call.",
-		"response.computer_call.",
-		"response.image_generation_call.",
-		"response.mcp_call.",
-		"response.tool_search_call.",
-	} {
+// hostedToolEventPrefixes 是厂商托管工具的执行进度事件前缀，Chat 目标无法表达。
+var hostedToolEventPrefixes = []string{
+	"response.web_search_call.",
+	"response.file_search_call.",
+	"response.code_interpreter_call.",
+	"response.computer_call.",
+	"response.image_generation_call.",
+	"response.mcp_call.",
+	"response.tool_search_call.",
+}
+
+func isHostedToolEvent(eventType string) bool {
+	for _, prefix := range hostedToolEventPrefixes {
 		if strings.HasPrefix(eventType, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+func isUnsupportedResponsesEvent(eventType string) bool {
+	return strings.HasPrefix(eventType, "response.audio.")
 }
 
 // NewStreamWriter 创建把 IR 事件写成 Responses SSE 的写入器。

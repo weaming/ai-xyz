@@ -597,6 +597,10 @@ func irToolsToResponses(tools []ir.Tool) ([]any, error) {
 			}
 			result = append(result, converted)
 		default:
+			if isBuiltInToolType(tool.Type) && len(tool.Raw) > 0 {
+				result = append(result, rawToAny(tool.Raw))
+				continue
+			}
 			return nil, fmt.Errorf("Responses 无法表达 tool type %q", tool.Type)
 		}
 	}

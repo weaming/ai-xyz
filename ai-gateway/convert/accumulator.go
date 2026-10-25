@@ -22,12 +22,14 @@ type Accumulator struct {
 }
 
 type accItem struct {
-	item      ir.Item
-	text      strings.Builder
-	refusal   strings.Builder
-	reasoning strings.Builder
-	args      strings.Builder
-	input     strings.Builder
+	item           ir.Item
+	text           strings.Builder
+	refusal        strings.Builder
+	reasoning      strings.Builder
+	args           strings.Builder
+	input          strings.Builder
+	annotations    []json.RawMessage
+	annotationKeys map[string]struct{}
 }
 
 // NewAccumulator 创建空聚合器。
@@ -51,6 +53,10 @@ func (accumulator *Accumulator) Apply(event ir.StreamEvent) error {
 		entry := accumulator.entry(event.OutputIndex)
 		entry.ensureMessage()
 		entry.text.WriteString(event.Delta)
+	case ir.EventAnnotationAdded:
+		entry := accumulator.entry(event.OutputIndex)
+		entry.ensureMessage()
+		entry.addAnnotation(event.Annotation)
 	case ir.EventReasoningDelta:
 		entry := accumulator.entry(event.OutputIndex)
 		entry.ensureReasoning()
@@ -88,6 +94,12 @@ func (accumulator *Accumulator) Apply(event ir.StreamEvent) error {
 				entry.text.Reset()
 				entry.reasoning.Reset()
 				entry.refusal.Reset()
+			}
+			// 上游可能只在 item.done 的完整 item 里带 annotations。
+			for _, part := range event.Item.Content {
+				for _, raw := range part.Annotations {
+					entry.addAnnotation(raw)
+				}
 			}
 		}
 	case ir.EventUsage:
@@ -193,13 +205,37 @@ func (entry *accItem) hasDeltas() bool {
 		entry.args.Len() > 0 || entry.input.Len() > 0
 }
 
+func (entry *accItem) addAnnotation(raw json.RawMessage) {
+	if !hasJSONValue(raw) {
+		return
+	}
+	key := annotationKey(raw)
+	if _, exists := entry.annotationKeys[key]; exists {
+		return
+	}
+	if entry.annotationKeys == nil {
+		entry.annotationKeys = map[string]struct{}{}
+	}
+	entry.annotationKeys[key] = struct{}{}
+	entry.annotations = append(entry.annotations, append(json.RawMessage(nil), raw...))
+}
+
+// annotationKey 生成与字段顺序无关的去重键，同一 citation 可能同时来自
+// annotation.added 事件与 output_item.done 的完整 item。
+func annotationKey(raw json.RawMessage) string {
+	if annotation := objectMap(raw); len(annotation) > 0 {
+		return string(mustJSON(annotation))
+	}
+	return string(raw)
+}
+
 func (entry *accItem) build() ir.Item {
 	item := entry.item
 	switch item.Type {
 	case "message":
 		content := make([]ir.ContentPart, 0, 2)
 		if entry.text.Len() > 0 {
-			content = append(content, ir.ContentPart{Type: "output_text", Text: entry.text.String()})
+			content = append(content, ir.ContentPart{Type: "output_text", Text: entry.text.String(), Annotations: entry.annotations})
 		}
 		if entry.refusal.Len() > 0 {
 			content = append(content, ir.ContentPart{Type: "refusal", Refusal: entry.refusal.String()})

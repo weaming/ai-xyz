@@ -9,6 +9,7 @@ const (
 	EventCreated            EventType = "created"
 	EventOutputItemAdded    EventType = "output_item_added"
 	EventTextDelta          EventType = "text_delta"
+	EventAnnotationAdded    EventType = "annotation_added"
 	EventReasoningDelta     EventType = "reasoning_delta"
 	EventRefusalDelta       EventType = "refusal_delta"
 	EventToolCallStart      EventType = "tool_call_start"
@@ -30,6 +31,7 @@ type StreamEvent struct {
 	CreatedAt         int64
 	Item              *Item
 	Delta             string
+	Annotation        json.RawMessage
 	Refusal           string
 	OutputIndex       int
 	ContentIndex      int

@@ -75,6 +75,7 @@ type Defaults struct {
 // Conversion 控制 IR 到目标协议的输出细节。
 type Conversion struct {
 	EmitReasoningContent bool `yaml:"emit_reasoning_content"`
+	ForwardBuiltInTools  bool `yaml:"forward_builtin_tools"`
 }
 
 func defaultConversion() Conversion {
@@ -185,6 +186,9 @@ func (cfg *Config) Validate() error {
 		}
 		if !isGeminiProvider && route.Upstream.Protocol != convert.ProtocolResponses && route.Upstream.Protocol != convert.ProtocolChatCompletions {
 			return fmt.Errorf("route %q 的 upstream.protocol 必须是 responses 或 chat", route.ID)
+		}
+		if route.Conversion.ForwardBuiltInTools && route.Upstream.Protocol != convert.ProtocolResponses {
+			return fmt.Errorf("route %q 的 conversion.forward_builtin_tools 只适用于 Responses 上游", route.ID)
 		}
 		if route.Upstream.BaseURL == "" && !isGeminiProvider {
 			return fmt.Errorf("route %q 缺少 upstream.base_url", route.ID)

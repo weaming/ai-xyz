@@ -262,3 +262,58 @@ func TestGatewayTranslatesResponsesStreamToChat(t *testing.T) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
+
+// TestGatewayForwardsHostedToolsAndCitations 覆盖托管工具转发与流式引用来源的完整链路。
+func TestGatewayForwardsHostedToolsAndCitations(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		tools, _ := body["tools"].([]any)
+		if len(tools) != 1 || tools[0].(map[string]any)["type"] != "web_search" {
+			t.Errorf("upstream tools = %#v", body["tools"])
+		}
+		frame := func(event, data string) string { return "event: " + event + "\ndata: " + data + "\n\n" }
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		for _, chunk := range []string{
+			frame("response.created", `{"type":"response.created","response":{"id":"resp_1","model":"m","created_at":10}}`),
+			frame("response.output_item.added", `{"type":"response.output_item.added","output_index":1,"item":{"type":"web_search_call","id":"ws_1","status":"in_progress"}}`),
+			frame("response.web_search_call.in_progress", `{"type":"response.web_search_call.in_progress","output_index":1,"item_id":"ws_1"}`),
+			frame("response.web_search_call.searching", `{"type":"response.web_search_call.searching","output_index":1,"item_id":"ws_1"}`),
+			frame("response.web_search_call.completed", `{"type":"response.web_search_call.completed","output_index":1,"item_id":"ws_1"}`),
+			frame("response.output_text.delta", `{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"ok"}`),
+			frame("response.output_text.annotation.added", `{"type":"response.output_text.annotation.added","output_index":0,"content_index":0,"annotation_index":0,"annotation":{"type":"url_citation","url":"https://example.com","title":"Example","start_index":0,"end_index":2}}`),
+			frame("response.completed", `{"type":"response.completed","response":{"id":"resp_1","model":"m","created_at":10,"status":"completed"}}`),
+		} {
+			if _, err := writer.Write([]byte(chunk)); err != nil {
+				return
+			}
+			writer.(http.Flusher).Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	handler, err := New(config.Config{Routes: []config.Route{{
+		ID:         "demo",
+		Upstream:   config.Upstream{Protocol: "responses", BaseURL: upstream.URL + "/v1"},
+		Conversion: config.Conversion{ForwardBuiltInTools: true},
+	}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/provider/demo/v1/chat/completions", strings.NewReader(`{"model":"m","stream":true,"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"web_search"}]}`))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	body := recorder.Body.String()
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, body)
+	}
+	if !strings.Contains(body, `"content":"ok"`) || !strings.Contains(body, "Example: https://example.com") {
+		t.Fatalf("正文或来源缺失: %s", body)
+	}
+	if strings.Contains(body, "web_search_call") {
+		t.Fatalf("托管工具 item 不应出现在 Chat 流: %s", body)
+	}
+}

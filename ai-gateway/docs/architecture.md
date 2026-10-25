@@ -64,8 +64,10 @@
 
 1. **保真**：目标协议能表达的字段一律原样映射（结构化输出、多模态、custom tool、allowed_tools、`service_tier`、`output_text.annotations` 等）。
 2. **丢弃调参/元数据与托管工具**：不影响内容、只是调优或元信息的字段，目标协议不表达时丢弃，并记入 `ir.Request.Dropped` 供日志排查：Chat 侧 `user`、`seed`、`logit_bias`、`prediction`、`prompt_cache_key`、`prompt_cache_retention`、`safety_identifier`、`web_search_options`；Responses 侧 `include`、`prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options`、`safety_identifier`；GenerateContent 侧忽略 `store`、`metadata`、`service_tier`、`parallel_tool_calls`、`text.verbosity`、`reasoning.summary`。
-   厂商托管工具同样降级而不是报错：`web_search`/`file_search`/`code_interpreter`/`computer_use`/`image_generation`/`mcp`/`tool_search` 工具被丢弃（记 `tools.<type>`）；`tool_search_call` 投影成名为 `tool_search` 的 function call，`tool_search_output` 投影成对应的 function output；其余内置 item（`web_search_call` 等）保留原始 JSON 并记 `items.<type>`，Chat/Gemini 输出时跳过，Responses 输出时原样回传。
-3. **报错**：丢失会改变语义时返回 400，并说明字段：`previous_response_id`/`conversation`/`background`/`prompt`/`moderation`/`context_management`/`max_tool_calls`、未知顶层字段或 item/tool 类型、custom tool 转 Gemini、`output_text.annotations` 转 Chat/Gemini、文件与音频转 Gemini、`n>1`、`logprobs`、音频输出、旧 `functions`/`function_call`。
+   厂商托管工具默认降级而不是报错：`web_search`/`file_search`/`code_interpreter`/`computer_use`/`image_generation`/`mcp`/`tool_search` 工具被丢弃（记 `tools.<type>`）；Responses 上游 route 可用 `conversion.forward_builtin_tools` 原样转发下游 Chat 请求提供的托管工具定义。`tool_search_call` 投影成名为 `tool_search` 的 function call，`tool_search_output` 投影成对应的 function output；其余内置 item（`web_search_call` 等）保留原始 JSON 并记 `items.<type>`，Chat/Gemini 输出时跳过，Responses 输出时原样回传。
+3. **报错**：丢失会改变语义时返回 400，并说明字段：`previous_response_id`/`conversation`/`background`/`prompt`/`moderation`/`context_management`/`max_tool_calls`、未知顶层字段或 item/tool 类型、custom tool 转 Gemini、未启用转发的 annotations 转 Chat/Gemini、文件与音频转 Gemini、`n>1`、`logprobs`、音频输出、旧 `functions`/`function_call`。
+
+开启 `forward_builtin_tools` 后，`output_text.annotations` 整条原样投影到 Chat `message.annotations`：不解释 annotation 类型，因此上游新增类型（`url_citation`/`file_citation`/`container_file_citation`/`file_path` 之外的）也不会丢字段；字符级 citation 的 `start_index`/`end_index` 随正文拼接平移到合并后的坐标，文件级 citation 的 `index` 原样保留。流式 Chat 无法表达 annotation 数组，改在正文尾部附加来源 URL（`Sources:` 列表），供只读 `delta.content` 的客户端使用；托管工具的执行进度事件（`response.web_search_call.*` 等）在开启转发时丢弃而不是中断流转。
 
 加密 reasoning 单独处理：解析时整条 item 原文存入 `Item.Raw`，只有 Responses 目标原样回传（含未建模字段），转 Chat/Gemini 时降级为可见 summary 文本，不报错也不伪造密文。
 

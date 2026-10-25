@@ -25,9 +25,10 @@ const (
 
 // Options 是协议转换所需的运行时选项。
 type Options struct {
-	DefaultModel  string
-	EmitReasoning bool
-	IncludeUsage  bool
+	DefaultModel        string
+	EmitReasoning       bool
+	IncludeUsage        bool
+	ForwardBuiltInTools bool
 }
 
 // Converter 是一个厂商协议转换器。

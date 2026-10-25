@@ -235,7 +235,10 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			incomingProtocol,
 			upstreamProtocol,
 			body,
-			convert.Options{DefaultModel: route.config.Defaults.Model},
+			convert.Options{
+				DefaultModel:        route.config.Defaults.Model,
+				ForwardBuiltInTools: route.config.Conversion.ForwardBuiltInTools,
+			},
 		)
 		if err != nil {
 			failure = err.Error()
@@ -293,7 +296,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	if !translatedResponse || response.StatusCode >= http.StatusBadRequest {
 		if !stream && response.StatusCode < http.StatusBadRequest && isEventStream(response) {
-			output, conversionErr := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+			output, conversionErr := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent, route.config.Conversion.ForwardBuiltInTools)
 			if conversionErr != nil {
 				failure = conversionErr.Error()
 				writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+conversionErr.Error())
@@ -317,7 +320,10 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			incomingProtocol,
 			response.Body,
 			writer,
-			convert.Options{EmitReasoning: route.config.Conversion.EmitReasoningContent},
+			convert.Options{
+				EmitReasoning:       route.config.Conversion.EmitReasoningContent,
+				ForwardBuiltInTools: route.config.Conversion.ForwardBuiltInTools,
+			},
 		)
 		if err != nil {
 			failure = err.Error()
@@ -325,7 +331,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if isEventStream(response) {
-		output, err := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+		output, err := aggregateStreamResponse(route.converter, response.Body, incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent, route.config.Conversion.ForwardBuiltInTools)
 		if err != nil {
 			failure = err.Error()
 			writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+err.Error())
@@ -344,7 +350,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if looksLikeSSE(responseBody) {
-		output, err := aggregateStreamResponse(route.converter, bytes.NewReader(responseBody), incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent)
+		output, err := aggregateStreamResponse(route.converter, bytes.NewReader(responseBody), incomingProtocol, upstreamProtocol, route.config.Conversion.EmitReasoningContent, route.config.Conversion.ForwardBuiltInTools)
 		if err != nil {
 			failure = err.Error()
 			writeError(writer, http.StatusBadGateway, "聚合上游流式响应失败: "+err.Error())
@@ -360,7 +366,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		upstreamProtocol,
 		incomingProtocol,
 		responseBody,
-		convert.Options{},
+		convert.Options{ForwardBuiltInTools: route.config.Conversion.ForwardBuiltInTools},
 	)
 	if err != nil {
 		failure = err.Error()
@@ -372,12 +378,12 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	_, _ = writer.Write(output)
 }
 
-func aggregateStreamResponse(converter convert.Converter, reader io.Reader, incomingProtocol, upstreamProtocol convert.Protocol, emitReasoning bool) ([]byte, error) {
+func aggregateStreamResponse(converter convert.Converter, reader io.Reader, incomingProtocol, upstreamProtocol convert.Protocol, emitReasoning, forwardBuiltInTools bool) ([]byte, error) {
 	return converter.AggregateStream(
 		upstreamProtocol,
 		incomingProtocol,
 		reader,
-		convert.Options{EmitReasoning: emitReasoning},
+		convert.Options{EmitReasoning: emitReasoning, ForwardBuiltInTools: forwardBuiltInTools},
 	)
 }
 

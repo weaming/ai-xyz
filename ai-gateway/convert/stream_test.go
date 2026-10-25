@@ -325,6 +325,82 @@ func responsesFrame(event, data string) string {
 	return "event: " + event + "\ndata: " + data + "\n\n"
 }
 
+// citationStream 构造带 url_citation 的 Responses 流，citation 同时出现在
+// annotation.added 事件与 output_item.done 的完整 item 中。
+func citationStream() string {
+	annotation := `{"type":"url_citation","url":"https://example.com","title":"Example","start_index":0,"end_index":2}`
+	return responsesFrame("response.created", `{"type":"response.created","response":{"id":"resp_1","model":"m","created_at":1700000000}}`) +
+		responsesFrame("response.output_item.added", `{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","content":[]}}`) +
+		responsesFrame("response.output_text.delta", `{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"hi"}`) +
+		responsesFrame("response.output_text.annotation.added", `{"type":"response.output_text.annotation.added","output_index":0,"content_index":0,"annotation_index":0,"annotation":`+annotation+`}`) +
+		responsesFrame("response.web_search_call.completed", `{"type":"response.web_search_call.completed","output_index":1,"item_id":"ws_1"}`) +
+		responsesFrame("response.output_item.done", `{"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[`+annotation+`]}]}}`) +
+		responsesFrame("response.completed", `{"type":"response.completed","response":{"id":"resp_1","status":"completed"}}`)
+}
+
+// TestResponsesStreamCarriesCitationsToChat 覆盖流式 citation 的来源汇总与聚合去重。
+func TestResponsesStreamCarriesCitationsToChat(t *testing.T) {
+	stream := citationStream()
+	var builder strings.Builder
+	if err := openaiConverter().ConvertStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), &builder, convert.Options{ForwardBuiltInTools: true}); err != nil {
+		t.Fatalf("流式转换失败: %v", err)
+	}
+	output := builder.String()
+	if !strings.Contains(output, "Example: https://example.com") {
+		t.Fatalf("流式正文缺少来源: %s", output)
+	}
+	if strings.Count(output, "https://example.com") != 1 {
+		t.Fatalf("来源不应重复: %s", output)
+	}
+
+	aggregated, err := openaiConverter().AggregateStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), convert.Options{ForwardBuiltInTools: true})
+	if err != nil {
+		t.Fatalf("聚合失败: %v", err)
+	}
+	var chat map[string]any
+	if err := json.Unmarshal(aggregated, &chat); err != nil {
+		t.Fatalf("聚合输出不是合法 JSON: %v", err)
+	}
+	message := chat["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	annotations, ok := message["annotations"].([]any)
+	if !ok || len(annotations) != 1 {
+		t.Fatalf("同一 citation 应去重为一条: %#v", message["annotations"])
+	}
+	citation := annotations[0].(map[string]any)
+	if citation["url"] != "https://example.com" || citation["end_index"] != float64(2) {
+		t.Fatalf("citation 字段丢失: %#v", citation)
+	}
+	if _, exists := message["tool_calls"]; exists {
+		t.Fatalf("托管工具调用不应投影成 Chat 工具调用: %#v", message["tool_calls"])
+	}
+}
+
+// TestResponsesStreamAnnotationsOnlyInItemDone 覆盖 annotation 只出现在 item.done 的情况。
+func TestResponsesStreamAnnotationsOnlyInItemDone(t *testing.T) {
+	stream := responsesFrame("response.created", `{"type":"response.created","response":{"id":"resp_1","model":"m","created_at":1700000000}}`) +
+		responsesFrame("response.output_item.added", `{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","content":[]}}`) +
+		responsesFrame("response.output_text.delta", `{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"hi"}`) +
+		responsesFrame("response.output_item.done", `{"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[{"type":"url_citation","url":"https://example.com","start_index":0,"end_index":2}]}]}}`) +
+		responsesFrame("response.completed", `{"type":"response.completed","response":{"id":"resp_1","status":"completed"}}`)
+
+	aggregated, err := openaiConverter().AggregateStream(convert.ProtocolResponses, convert.ProtocolChatCompletions, strings.NewReader(stream), convert.Options{ForwardBuiltInTools: true})
+	if err != nil {
+		t.Fatalf("聚合失败: %v", err)
+	}
+	var chat map[string]any
+	if err := json.Unmarshal(aggregated, &chat); err != nil {
+		t.Fatalf("聚合输出不是合法 JSON: %v", err)
+	}
+	message := chat["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	if !strings.Contains(mustString(t, message["content"]), "hi") {
+		t.Fatalf("正文丢失: %#v", message)
+	}
+	annotations, ok := message["annotations"].([]any)
+	if !ok || len(annotations) != 1 {
+		t.Fatalf("item.done 中的 annotations 未保留: %#v", message["annotations"])
+	}
+}
+
 // dataFrame 构造只有 data 的 SSE 帧。
 func dataFrame(data string) string { return "data: " + data + "\n\n" }
 

@@ -373,6 +373,13 @@ func (writer *chatStreamWriter) Close() (*ir.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	if writer.options.ForwardBuiltInTools {
+		if sources := citationSourcesText(response.Output); sources != "" {
+			if err := writer.writeChunk(map[string]any{"content": sources}, nil); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if !writer.started {
 		if err := writer.writeChunk(map[string]any{"role": "assistant"}, nil); err != nil {
 			return nil, err

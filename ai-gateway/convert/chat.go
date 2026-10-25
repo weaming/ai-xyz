@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/weaming/ai-xyz/ai-gateway/ir"
 )
@@ -79,7 +80,7 @@ func (ChatCodec) ParseRequest(body []byte, options Options) (*ir.Request, error)
 		request.Text = &ir.TextConfig{Format: format}
 	}
 	if raw := source["tools"]; hasJSONValue(raw) {
-		tools, builtIn, err := chatToolsToIR(raw)
+		tools, builtIn, err := chatToolsToIR(raw, options.ForwardBuiltInTools)
 		if err != nil {
 			return nil, err
 		}
@@ -310,7 +311,7 @@ func chatThoughtSignature(call map[string]json.RawMessage) string {
 	return stringValue(call["thoughtSignature"])
 }
 
-func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, []string, error) {
+func chatToolsToIR(raw json.RawMessage, forwardBuiltIn bool) ([]ir.Tool, []string, error) {
 	tools := rawList(raw)
 	result := make([]ir.Tool, 0, len(tools))
 	builtIn := []string{}
@@ -342,6 +343,10 @@ func chatToolsToIR(raw json.RawMessage) ([]ir.Tool, []string, error) {
 			})
 		default:
 			if isBuiltInToolType(toolType) {
+				if forwardBuiltIn {
+					result = append(result, ir.Tool{Type: toolType, Raw: mustJSON(rawMapToAny(tool))})
+					continue
+				}
 				builtIn = append(builtIn, toolType)
 				continue
 			}
@@ -736,6 +741,8 @@ func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, 
 	refusals := []string{}
 	reasoning := []string{}
 	toolCalls := []any{}
+	annotations := []any{}
+	textOffset := 0
 	for _, item := range response.Output {
 		switch item.Type {
 		case "message":
@@ -743,9 +750,17 @@ func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, 
 				switch part.Type {
 				case "output_text", "text":
 					if len(part.Annotations) > 0 {
-						return nil, fmt.Errorf("Chat Completions 无法表达 output_text.annotations")
+						if !options.ForwardBuiltInTools {
+							return nil, fmt.Errorf("Chat Completions 无法表达 output_text.annotations")
+						}
+						converted, err := annotationsToChat(part.Annotations, textOffset)
+						if err != nil {
+							return nil, err
+						}
+						annotations = append(annotations, converted...)
 					}
 					content = append(content, part.Text)
+					textOffset += len(utf16.Encode([]rune(part.Text)))
 				case "refusal":
 					refusals = append(refusals, part.Refusal)
 				default:
@@ -782,6 +797,9 @@ func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, 
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
 	}
+	if len(annotations) > 0 {
+		message["annotations"] = annotations
+	}
 	choice := map[string]any{
 		"index":         0,
 		"message":       message,
@@ -804,6 +822,69 @@ func (ChatCodec) WriteResponse(response *ir.Response, options Options) ([]byte, 
 		result["usage"] = chatUsage(response.Usage)
 	}
 	return json.Marshal(result)
+}
+
+// annotationsToChat 把 Responses annotation 原样投影到 Chat message.annotations。
+// 不解释类型，因此上游新增 annotation 类型时也不会丢字段；字符级 citation 的
+// 区间随正文拼接平移到 Chat 合并后的坐标，文件级 citation 的 index 原样保留。
+func annotationsToChat(rawAnnotations []json.RawMessage, textOffset int) ([]any, error) {
+	converted := make([]any, 0, len(rawAnnotations))
+	for _, raw := range rawAnnotations {
+		annotation := objectMap(raw)
+		if len(annotation) == 0 {
+			return nil, fmt.Errorf("annotation 必须是 JSON 对象")
+		}
+		if start, end, ok := annotationSpan(annotation); ok {
+			annotation["start_index"] = mustJSON(start + textOffset)
+			annotation["end_index"] = mustJSON(end + textOffset)
+		}
+		converted = append(converted, rawMapToAny(annotation))
+	}
+	return converted, nil
+}
+
+// annotationSpan 读取字符级 citation 的位置区间；没有区间的 annotation 返回 false。
+func annotationSpan(annotation map[string]json.RawMessage) (int, int, bool) {
+	startRaw, endRaw := annotation["start_index"], annotation["end_index"]
+	if len(startRaw) == 0 || len(endRaw) == 0 || string(startRaw) == "null" || string(endRaw) == "null" {
+		return 0, 0, false
+	}
+	start, end := int(intValue(startRaw)), int(intValue(endRaw))
+	if start < 0 || end < start {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+// citationSourcesText 汇总正文末尾的引用来源，供只能读 delta.content 的 Chat 客户端使用。
+func citationSourcesText(output []ir.Item) string {
+	sources := []string{}
+	seenURLs := map[string]struct{}{}
+	for _, item := range output {
+		for _, part := range item.Content {
+			for _, raw := range part.Annotations {
+				annotation := objectMap(raw)
+				url := stringValue(annotation["url"])
+				if url == "" {
+					continue
+				}
+				if _, exists := seenURLs[url]; exists {
+					continue
+				}
+				seenURLs[url] = struct{}{}
+				title := stringValue(annotation["title"])
+				if title == "" {
+					sources = append(sources, url)
+				} else {
+					sources = append(sources, title+": "+url)
+				}
+			}
+		}
+	}
+	if len(sources) == 0 {
+		return ""
+	}
+	return "\n\nSources:\n- " + strings.Join(sources, "\n- ")
 }
 
 // ParseResponse 把 Chat Completions 响应解析成 IR。

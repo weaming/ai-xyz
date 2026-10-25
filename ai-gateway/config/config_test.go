@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -117,5 +118,17 @@ func TestLoadVertexOptions(t *testing.T) {
 	}
 	if upstream.GenerateContent.ThinkingLevel != "medium" || upstream.GenerateContent.ModelAliases["fast"] != "gemini-2.5-flash" {
 		t.Fatalf("generate content options = %#v", upstream.GenerateContent)
+	}
+}
+
+// TestForwardBuiltInToolsRequiresResponsesUpstream 覆盖托管工具转发的上游限制。
+func TestForwardBuiltInToolsRequiresResponsesUpstream(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := []byte("routes:\n  - id: demo-route\n    upstream:\n      protocol: chat\n      base_url: https://example.test/v1\n    conversion:\n      forward_builtin_tools: true\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "forward_builtin_tools") {
+		t.Fatalf("chat 上游应拒绝 forward_builtin_tools: %v", err)
 	}
 }
