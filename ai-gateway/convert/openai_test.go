@@ -72,6 +72,27 @@ func TestChatRequestToResponsesKeepsAppendOnlyInputPrefix(t *testing.T) {
 	}
 }
 
+func TestChatRequestToResponsesAcceptsEmptyStringContent(t *testing.T) {
+	input := []byte(`{"model":"m","messages":[{"role":"user","content":""},{"role":"assistant","content":""}]}`)
+	output, err := ChatRequestToResponses(input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(output, &value); err != nil {
+		t.Fatal(err)
+	}
+	items := value["input"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("input length = %d, want 2: %#v", len(items), items)
+	}
+	if items[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"] != "" {
+		t.Fatalf("user content = %#v", items[0])
+	}
+	if items[1].(map[string]any)["content"].([]any)[0].(map[string]any)["text"] != "" {
+		t.Fatalf("assistant content = %#v", items[1])
+	}
+}
 func TestChatRequestToResponsesAcceptsStreamOptionsIncludeUsage(t *testing.T) {
 	input := []byte(`{"model":"m","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
 	output, err := ChatRequestToResponses(input, "")

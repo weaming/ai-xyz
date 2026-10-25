@@ -447,7 +447,8 @@ func chatContentToResponses(raw json.RawMessage, role string) ([]map[string]any,
 	if len(raw) == 0 || string(raw) == "null" {
 		return []map[string]any{}, nil
 	}
-	if text := stringValue(raw); text != "" {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
 		contentType := "input_text"
 		if role == "assistant" {
 			contentType = "output_text"
