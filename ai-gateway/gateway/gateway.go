@@ -73,6 +73,7 @@ func New(cfg config.Config, logger *slog.Logger) (*Gateway, error) {
 				ThinkingLevel: route.Upstream.GenerateContent.ThinkingLevel,
 				ModelAliases:  route.Upstream.GenerateContent.ModelAliases,
 				Timeout:       route.Upstream.Timeout,
+				Provider:      route.Upstream.Provider,
 			}
 			server, err := gemini.NewServer(client, serverOptions)
 			if err != nil {
@@ -217,11 +218,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	if route.gemini != nil {
 		upstreamProtocol = route.config.Upstream.Protocol
-		if incomingProtocol == convert.ProtocolChatCompletions {
-			route.gemini.ServeChat(writer, request, body)
-		} else {
-			route.gemini.ServeResponses(writer, request, body)
-		}
+		route.gemini.Serve(writer, request, body, incomingProtocol)
 		return
 	}
 
@@ -238,7 +235,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			incomingProtocol,
 			upstreamProtocol,
 			body,
-			convert.Options{DefaultModel: route.config.Defaults.Model, Mode: convert.Mode(route.config.Conversion.Mode)},
+			convert.Options{DefaultModel: route.config.Defaults.Model},
 		)
 		if err != nil {
 			failure = err.Error()

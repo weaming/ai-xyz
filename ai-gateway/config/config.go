@@ -72,17 +72,13 @@ type Defaults struct {
 	Model string `yaml:"model"`
 }
 
-// Conversion 控制 IR 到目标协议的降级策略。
+// Conversion 控制 IR 到目标协议的输出细节。
 type Conversion struct {
-	Mode                 string `yaml:"mode"`
-	EmitReasoningContent bool   `yaml:"emit_reasoning_content"`
+	EmitReasoningContent bool `yaml:"emit_reasoning_content"`
 }
 
 func defaultConversion() Conversion {
-	return Conversion{
-		Mode:                 "preserve",
-		EmitReasoningContent: true,
-	}
+	return Conversion{EmitReasoningContent: true}
 }
 
 // UnmarshalYAML 使用兼容协议的默认转换配置。
@@ -192,12 +188,6 @@ func (cfg *Config) Validate() error {
 		}
 		if route.Upstream.BaseURL == "" && !isGeminiProvider {
 			return fmt.Errorf("route %q 缺少 upstream.base_url", route.ID)
-		}
-		if route.Conversion.Mode == "" {
-			route.Conversion.Mode = "preserve"
-		}
-		if route.Conversion.Mode != "portable" && route.Conversion.Mode != "preserve" && route.Conversion.Mode != "strict" {
-			return fmt.Errorf("route %q 的 conversion.mode 无效: %s", route.ID, route.Conversion.Mode)
 		}
 	}
 	return nil

@@ -11,6 +11,7 @@ type Response struct {
 	Status             string
 	Output             []Item
 	Usage              *Usage
+	FinishReason       string
 	IncompleteDetails  json.RawMessage
 	Error              json.RawMessage
 	ServiceTier        string

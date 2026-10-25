@@ -18,7 +18,7 @@ func TestLoadExpandsEnvironmentAndDefaultsConversion(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversion := cfg.Routes[0].Conversion
-	if cfg.Server.Address != "127.0.0.1:8787" || conversion.Mode != "preserve" || !conversion.EmitReasoningContent || cfg.Routes[0].Upstream.TokenEnv != "TEST_UPSTREAM_TOKEN" {
+	if cfg.Server.Address != "127.0.0.1:8787" || !conversion.EmitReasoningContent || cfg.Routes[0].Upstream.TokenEnv != "TEST_UPSTREAM_TOKEN" {
 		t.Fatalf("config = %#v", cfg)
 	}
 	if token, err := cfg.Routes[0].Upstream.ResolveToken(); err != nil || token != "secret" {
@@ -37,7 +37,7 @@ func TestLoadKeepsExplicitlyDisabledReasoningContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Routes[0].Conversion.Mode != "preserve" || cfg.Routes[0].Conversion.EmitReasoningContent {
+	if cfg.Routes[0].Conversion.EmitReasoningContent {
 		t.Fatalf("conversion = %#v", cfg.Routes[0].Conversion)
 	}
 }

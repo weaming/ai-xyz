@@ -180,11 +180,11 @@ func TestGatewayGeminiRoute(t *testing.T) {
 	if !strings.Contains(responses.Body.String(), `"status":"completed"`) {
 		t.Fatalf("responses status missing: %s", responses.Body.String())
 	}
-	unsupported := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/responses", strings.NewReader(`{"input":"hi","store":true}`))
+	unsupported := httptest.NewRequest(http.MethodPost, "/provider/gemini/v1/responses", strings.NewReader(`{"input":"hi","previous_response_id":"resp_1"}`))
 	unsupported.Header.Set("Authorization", "Bearer incoming")
 	unsupportedRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(unsupportedRecorder, unsupported)
-	if unsupportedRecorder.Code != http.StatusBadRequest || !strings.Contains(unsupportedRecorder.Body.String(), "store") {
+	if unsupportedRecorder.Code != http.StatusBadRequest || !strings.Contains(unsupportedRecorder.Body.String(), "previous_response_id") {
 		t.Fatalf("unsupported status=%d body=%s", unsupportedRecorder.Code, unsupportedRecorder.Body.String())
 	}
 

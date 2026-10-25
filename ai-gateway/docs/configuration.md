@@ -28,11 +28,12 @@ routes:
     defaults:
       model: gpt-5.6-luna
     conversion:
-      mode: preserve
       emit_reasoning_content: true
 ```
 
-省略 `conversion` 或其中字段时，默认使用 `mode: preserve` 和 `emit_reasoning_content: true`；如需关闭 reasoning content，可显式设置 `emit_reasoning_content: false`。
+省略 `conversion` 或其中字段时默认 `emit_reasoning_content: true`；如需关闭 reasoning content，可显式设置 `emit_reasoning_content: false`。旧配置里的 `conversion.mode` 已移除，YAML 读取时会被忽略（它此前只影响错误文案，不影响转换行为）。
+
+转换策略固定：能表达就保真；调参/元数据（`store`、`metadata`、`service_tier`、`include`、`prompt_cache_*`、`safety_identifier`、`user`、`seed`、`text.verbosity`、`reasoning.summary` 等）目标协议不表达时丢弃并记入日志（gemini route 的完成日志带 `dropped=`）；会话状态、内置工具、`annotations`、custom tool 转 Gemini 等会改变语义的字段返回 400。
 
 `routes[].id` 只能包含字母、数字、`.`、`_`、`-`，并且必须唯一。以上配置提供：
 

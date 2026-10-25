@@ -19,5 +19,4 @@ routes:
     defaults:
       model: gpt-5.6-luna
     conversion:
-      mode: preserve
       emit_reasoning_content: true

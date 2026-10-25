@@ -49,7 +49,15 @@ func normalizeProvider(provider ir.Provider) ir.Provider {
 	return ir.Provider(strings.ToLower(strings.TrimSpace(string(provider))))
 }
 
+// NewOpenAICompatibleConverter 创建 Chat Completions 与 Responses 两协议的中枢转换器。
+func NewOpenAICompatibleConverter(provider ir.Provider) Converter {
+	return NewHub(provider, ChatCodec{}, ResponsesCodec{})
+}
+
 // DefaultRegistry 返回当前内置厂商转换器。
 func DefaultRegistry() *Registry {
-	return NewRegistry(NewOpenAIConverter(), NewDeepSeekConverter())
+	return NewRegistry(
+		NewOpenAICompatibleConverter(ir.ProviderOpenAI),
+		NewOpenAICompatibleConverter(ir.ProviderDeepSeek),
+	)
 }

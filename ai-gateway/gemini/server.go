@@ -12,16 +12,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/weaming/ai-xyz/ai-gateway/convert"
+	"github.com/weaming/ai-xyz/ai-gateway/ir"
 	"google.golang.org/genai"
 )
 
-// Server OpenAI 兼容的 Gemini 代理服务。
+// Server 把入口协议转换成 Gemini GenerateContent 并调用 SDK。
 type Server struct {
 	client        *genai.Client
 	model         string
 	thinkingLevel genai.ThinkingLevel
 	aliases       map[string]string
 	timeout       time.Duration
+	converter     *Converter
 }
 
 var idCounter atomic.Uint64
@@ -32,6 +35,7 @@ type ServerOptions struct {
 	ThinkingLevel string
 	ModelAliases  map[string]string
 	Timeout       time.Duration
+	Provider      ir.Provider
 }
 
 // NewServer 创建单个 route 的 Gemini HTTP handler。
@@ -39,6 +43,10 @@ func NewServer(client *genai.Client, options ServerOptions) (*Server, error) {
 	level, err := thinkingLevel(options.ThinkingLevel)
 	if err != nil {
 		return nil, err
+	}
+	provider := options.Provider
+	if provider == "" {
+		provider = ir.ProviderGoogle
 	}
 	timeout := options.Timeout
 	if timeout <= 0 {
@@ -50,22 +58,13 @@ func NewServer(client *genai.Client, options ServerOptions) (*Server, error) {
 		thinkingLevel: level,
 		aliases:       options.ModelAliases,
 		timeout:       timeout,
+		converter:     NewConverter(provider, level),
 	}, nil
 }
 
-func thinkingLevel(value string) (genai.ThinkingLevel, error) {
-	switch strings.ToLower(value) {
-	case "":
-		return genai.ThinkingLevelUnspecified, nil
-	case "low":
-		return genai.ThinkingLevelLow, nil
-	case "medium":
-		return genai.ThinkingLevelMedium, nil
-	case "high":
-		return genai.ThinkingLevelHigh, nil
-	default:
-		return "", fmt.Errorf("Gemini thinking_level 无效: %q", value)
-	}
+// Converter 暴露该 route 的转换器，便于网关与测试复用。
+func (s *Server) Converter() *Converter {
+	return s.converter
 }
 
 func (s *Server) resolveModel(requested string) string {
@@ -101,270 +100,162 @@ func writeOpenAIError(w http.ResponseWriter, status int, errType, message string
 	})
 }
 
-// ServeChat 将 Chat Completions 请求交给 Gemini GenerateContent。
-func (s *Server) ServeChat(w http.ResponseWriter, r *http.Request, body []byte) {
+// Serve 把入口协议请求转换成 Gemini GenerateContent 请求并输出入口协议响应。
+func (s *Server) Serve(w http.ResponseWriter, r *http.Request, body []byte, incoming convert.Protocol) {
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 	r = r.WithContext(ctx)
-	var req chatRequest
-	if err := decodeKnownRequest(body, &req, chatRequestFields); err != nil {
-		log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 400 Bad Request (dur=%v): 非法 JSON: %v", time.Since(startTime), err)
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("请求体不是合法 JSON: %v", err))
-		return
-	}
-	if len(req.Messages) == 0 {
-		log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 400 Bad Request (dur=%v): messages 不能为空", time.Since(startTime))
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "messages 不能为空")
-		return
-	}
 
-	model := s.resolveModel(req.Model)
+	options := convert.Options{DefaultModel: s.model}
+	request, err := s.converter.ParseRequest(incoming, body, options)
+	if err != nil {
+		log.Printf("[ai-gateway/gemini] %s 400 Bad Request (dur=%v): %v", incoming, time.Since(startTime), err)
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	model := s.resolveModel(request.Model)
 	if model == "" {
 		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "缺少 model，且 route 未配置 defaults.model")
 		return
 	}
+	request.Model = model
+	options.IncludeUsage = includeUsage(request)
 
-	config := &genai.GenerateContentConfig{}
-	config.Temperature = req.Temperature
-	config.TopP = req.TopP
-	config.StopSequences = req.Stop
-	system, err := extractSystemPrompt(req.Messages)
+	native, err := encodeRequest(request, s.thinkingLevel)
 	if err != nil {
+		log.Printf("[ai-gateway/gemini] %s 400 Bad Request (dur=%v): %v", incoming, time.Since(startTime), err)
 		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
-	if system != "" {
-		config.SystemInstruction = &genai.Content{Parts: []*genai.Part{{Text: system}}}
-	}
-	tools, err := toGeminiTools(req.Tools)
-	if err != nil {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+	config := native.GenerationConfig
+	config.SystemInstruction = native.SystemInstruction
+	config.Tools = native.Tools
+	config.ToolConfig = native.ToolConfig
+
+	if request.Stream {
+		s.serveStream(w, r, incoming, model, native.Contents, config, options, droppedTag(request), startTime)
 		return
 	}
-	if tools != nil {
-		config.Tools = tools
-	}
-	if err := applyResponseFormat(config, req.ResponseFormat); err != nil {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return
-	}
-	maxTokens := req.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = req.MaxCompletionTokens
-	}
-	if maxTokens > 0 {
-		config.MaxOutputTokens = int32(maxTokens)
-	}
-
-	// 思考配置：支持 includeThoughts 与 ThinkingLevel / ThinkingBudget 映射
-	config.ThinkingConfig = buildThinkingConfig(model, req.ReasoningEffort, s.thinkingLevel)
-
-	// ToolChoice 转换
-	toolConfig, err := toGeminiToolConfig(req.ToolChoice)
-	if err != nil {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return
-	}
-	if toolConfig != nil {
-		config.ToolConfig = toolConfig
-	}
-
-	contents, err := toGeminiContents(req.Messages)
-	if err != nil {
-		log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 400 Bad Request (dur=%v): toGeminiContents 失败: %v", time.Since(startTime), err)
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return
-	}
-
-	if req.Stream {
-		includeUsage := req.StreamOptions != nil && req.StreamOptions.IncludeUsage
-		s.handleStream(w, r, model, contents, config, includeUsage, len(req.Messages), len(req.Tools), startTime)
-		return
-	}
-
-	resp, err := s.client.Models.GenerateContent(r.Context(), model, contents, config)
+	response, err := s.client.Models.GenerateContent(r.Context(), model, native.Contents, config)
 	duration := time.Since(startTime)
 	if err != nil {
-		log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 502 Bad Gateway model=%s (dur=%v): %v", model, duration, err)
+		log.Printf("[ai-gateway/gemini] %s 502 Bad Gateway model=%s (dur=%v): %v", incoming, model, duration, err)
 		writeOpenAIError(w, http.StatusBadGateway, "api_error", fmt.Sprintf("LLM provider 请求失败: %v", err))
 		return
 	}
-
-	res := fromGeminiResponse(resp, model)
-	choice := res.Choices[0]
-	hasContent := choice.Message.Content != nil && *choice.Message.Content != ""
-	toolCallCount := len(choice.Message.ToolCalls)
-
-	warnTag := ""
-	if !hasContent && toolCallCount == 0 {
-		warnTag = " WARN=empty_response"
+	decoded := decodeResponse(response, model)
+	decoded.Model = modelVersion(response, model)
+	output, err := s.converter.WriteResponse(incoming, decoded, options)
+	if err != nil {
+		log.Printf("[ai-gateway/gemini] %s 502 Bad Gateway model=%s (dur=%v): 转换响应失败: %v", incoming, model, duration, err)
+		writeOpenAIError(w, http.StatusBadGateway, "conversion_error", err.Error())
+		return
 	}
-
-	tokensTag := formatUsageTag(res.Usage)
-	log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 200 OK model=%s stream=false msgs=%d tools=%d dur=%v %s finish=%s calls=%d%s",
-		model, len(req.Messages), len(req.Tools), duration.Round(time.Millisecond), tokensTag, choice.FinishReason, toolCallCount, warnTag)
-
+	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=false items=%d tools=%d dur=%v %s%s",
+		incoming, model, len(decoded.Output), len(request.Tools), duration.Round(time.Millisecond), formatUsageTag(decoded.Usage), droppedTag(request))
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(res); err != nil {
+	if _, err := w.Write(output); err != nil {
 		log.Printf("[ai-gateway/gemini] 写入响应失败: %v", err)
 	}
 }
 
-func formatUsageTag(u *usageInfo) string {
-	if u == nil {
-		return "tokens=0/0/0"
-	}
-	think := 0
-	if u.CompletionTokensDetails != nil {
-		think = u.CompletionTokensDetails.ReasoningTokens
-	}
-	return fmt.Sprintf("tokens=in:%d/out:%d/think:%d", u.PromptTokens, u.CompletionTokens, think)
-}
-
-func buildThinkingConfig(model string, reasoningEffort string, defaultLevel genai.ThinkingLevel) *genai.ThinkingConfig {
-	effort := strings.ToLower(reasoningEffort)
-	if effort == "none" || effort == "off" || effort == "disabled" || effort == "0" {
-		budget := int32(0)
-		return &genai.ThinkingConfig{
-			IncludeThoughts: false,
-			ThinkingBudget:  &budget,
-		}
-	}
-
-	// 只要不是显式关闭，默认始终开启 IncludeThoughts: true，确保 Google 返回思考内容
-	cfg := &genai.ThinkingConfig{
-		IncludeThoughts: true,
-	}
-
-	if effort != "" && effort != "auto" {
-		level := mapReasoningEffort(effort)
-		if level != genai.ThinkingLevelUnspecified {
-			cfg.ThinkingLevel = level
-		}
-	} else if defaultLevel != "" && defaultLevel != genai.ThinkingLevelUnspecified {
-		cfg.ThinkingLevel = defaultLevel
-	}
-
-	return cfg
-}
-
-func mapReasoningEffort(effort string) genai.ThinkingLevel {
-	switch strings.ToLower(effort) {
-	case "low", "minimal":
-		return genai.ThinkingLevelLow
-	case "medium":
-		return genai.ThinkingLevelMedium
-	case "high":
-		return genai.ThinkingLevelHigh
-	default:
-		return genai.ThinkingLevelUnspecified
-	}
-}
-
-// handleStream 以 SSE 输出 OpenAI 格式的流式 chunks。
-func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, model string, contents []*genai.Content, config *genai.GenerateContentConfig, includeUsage bool, msgCount, toolCount int, startTime time.Time) {
+func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, incoming convert.Protocol, model string, contents []*genai.Content, config *genai.GenerateContentConfig, options convert.Options, dropped string, startTime time.Time) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 500 Internal Error (dur=%v): 连接不支持流式输出", time.Since(startTime))
+		log.Printf("[ai-gateway/gemini] %s 500 Internal Error (dur=%v): 连接不支持流式输出", incoming, time.Since(startTime))
 		http.Error(w, "当前连接不支持流式输出", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	flusher.Flush()
 
-	stream := s.client.Models.GenerateContentStream(r.Context(), model, contents, config)
-	requestID := requestID()
-	createdAt := unixNow()
-	toolCallState := &toolCallStreamState{}
-	var lastUsage *usageInfo
-	var chunkCount int
-	var hasContent bool
-	var hasToolCalls bool
-	var finishReason string
+	streamWriter, err := s.converter.NewStreamWriter(incoming, w, options)
+	if err != nil {
+		log.Printf("[ai-gateway/gemini] %s 500 Internal Error: %v", incoming, err)
+		return
+	}
+	state := newChunkState()
+	emit := func(events []ir.StreamEvent) error {
+		for _, event := range events {
+			if err := streamWriter.Write(event); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	chunks := 0
 	var ttft time.Duration
-
-	for resp, err := range stream {
+	for response, err := range s.client.Models.GenerateContentStream(r.Context(), model, contents, config) {
 		if err != nil {
-			isCanceled := errors.Is(err, context.Canceled) ||
-				errors.Is(r.Context().Err(), context.Canceled) ||
-				strings.Contains(err.Error(), "context canceled")
-
 			duration := time.Since(startTime).Round(time.Millisecond)
-			if isCanceled {
-				log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 499 CANCELED model=%s stream=true msgs=%d tools=%d dur=%v chunks=%d (client canceled)",
-					model, msgCount, toolCount, duration, chunkCount)
+			if isCanceled(r, err) {
+				log.Printf("[ai-gateway/gemini] %s 499 CANCELED model=%s stream=true dur=%v chunks=%d (client canceled)", incoming, model, duration, chunks)
 				return
 			}
-
-			log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 502 Bad Gateway model=%s stream=true msgs=%d tools=%d dur=%v chunks=%d: %v",
-				model, msgCount, toolCount, duration, chunkCount, err)
-			_ = writeSSE(w, map[string]any{"error": map[string]string{
-				"message": "Gemini 流式请求失败: " + err.Error(),
-				"type":    "provider_error",
-			}})
-			flusher.Flush()
+			log.Printf("[ai-gateway/gemini] %s 502 Bad Gateway model=%s stream=true dur=%v chunks=%d: %v", incoming, model, duration, chunks, err)
+			writeOpenAIError(w, http.StatusBadGateway, "api_error", fmt.Sprintf("Gemini 流式请求失败: %v", err))
 			return
 		}
-
-		chunkCount++
-		if chunkCount == 1 {
+		chunks++
+		if chunks == 1 {
 			ttft = time.Since(startTime).Round(time.Millisecond)
 		}
-
-		chunk := toOpenAIChunk(resp, model, requestID, createdAt, toolCallState)
-		if chunk.Usage != nil {
-			lastUsage = chunk.Usage
-		}
-		if len(chunk.Choices) > 0 {
-			delta := chunk.Choices[0].Delta
-			if delta.Content != nil && *delta.Content != "" {
-				hasContent = true
-			}
-			if len(delta.ToolCalls) > 0 {
-				hasToolCalls = true
-			}
-			if chunk.Choices[0].FinishReason != nil {
-				finishReason = *chunk.Choices[0].FinishReason
-			}
-		}
-
-		if err := writeSSE(w, chunk); err != nil {
+		if err := emit(state.events(response, model)); err != nil {
+			log.Printf("[ai-gateway/gemini] %s 写流事件失败: %v", incoming, err)
 			return
 		}
 		flusher.Flush()
 	}
-
-	totalDuration := time.Since(startTime).Round(time.Millisecond)
-	warnTag := ""
-	if !hasContent && !hasToolCalls {
-		warnTag = " WARN=empty_response"
+	if chunks == 0 {
+		log.Printf("[ai-gateway/gemini] %s 502 Bad Gateway model=%s stream=true dur=%v: 上游没有返回任何 chunk", incoming, model, time.Since(startTime).Round(time.Millisecond))
+		writeOpenAIError(w, http.StatusBadGateway, "api_error", "Gemini 流式请求没有返回任何数据")
+		return
 	}
-
-	tokensTag := formatUsageTag(lastUsage)
-	if finishReason == "" {
-		finishReason = "stop"
+	if err := emit(state.finishEvents()); err != nil {
+		log.Printf("[ai-gateway/gemini] %s 写终止事件失败: %v", incoming, err)
+		return
 	}
-
-	log.Printf("[ai-gateway/gemini] POST /v1/chat/completions 200 OK model=%s stream=true msgs=%d tools=%d ttft=%v dur=%v %s finish=%s chunks=%d%s",
-		model, msgCount, toolCount, ttft, totalDuration, tokensTag, finishReason, chunkCount, warnTag)
-
-	if includeUsage && lastUsage != nil {
-		usageChunk := &chatChunk{
-			ID:      requestID,
-			Object:  "chat.completion.chunk",
-			Created: createdAt,
-			Model:   model,
-			Choices: []chunkChoice{},
-			Usage:   lastUsage,
-		}
-		_ = writeSSE(w, usageChunk)
-		flusher.Flush()
+	response, err := streamWriter.Close()
+	if err != nil {
+		log.Printf("[ai-gateway/gemini] %s 关闭流失败: %v", incoming, err)
+		return
 	}
-
-	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	flusher.Flush()
+	log.Printf("[ai-gateway/gemini] %s 200 OK model=%s stream=true ttft=%v dur=%v %s finish=%s chunks=%d items=%d%s",
+		incoming, model, ttft, time.Since(startTime).Round(time.Millisecond), formatUsageTag(response.Usage), response.FinishReason, chunks, len(response.Output), dropped)
+}
+
+func isCanceled(r *http.Request, err error) bool {
+	return errors.Is(err, context.Canceled) ||
+		errors.Is(r.Context().Err(), context.Canceled) ||
+		strings.Contains(err.Error(), "context canceled")
+}
+
+func includeUsage(request *ir.Request) bool {
+	if request.StreamOptions == nil {
+		return false
+	}
+	value, _ := request.StreamOptions["include_usage"].(bool)
+	return value
+}
+
+// droppedTag 把目标协议忽略的调参/元数据字段写进日志，便于发现客户端差异。
+func droppedTag(request *ir.Request) string {
+	if len(request.Dropped) == 0 {
+		return ""
+	}
+	return " dropped=" + strings.Join(request.Dropped, ",")
+}
+
+func formatUsageTag(usage *ir.Usage) string {
+	if usage == nil {
+		return "tokens=0/0/0"
+	}
+	return fmt.Sprintf("tokens=in:%d/out:%d/think:%d", usage.InputTokens, usage.OutputTokens, usage.ReasoningTokens)
 }
 
 // ServeModels 列出该 route 可用的模型名和别名。
@@ -385,17 +276,9 @@ func (s *Server) ServeModels(w http.ResponseWriter) {
 
 	dataList := make([]map[string]any, 0, len(allModels))
 	modelsList := make([]map[string]any, 0, len(allModels))
-
-	for _, m := range allModels {
-		dataList = append(dataList, map[string]any{
-			"id":       m,
-			"object":   "model",
-			"owned_by": "google",
-		})
-		modelsList = append(modelsList, map[string]any{
-			"slug":         m,
-			"display_name": m,
-		})
+	for _, model := range allModels {
+		dataList = append(dataList, map[string]any{"id": model, "object": "model", "owned_by": "google"})
+		modelsList = append(modelsList, map[string]any{"slug": model, "display_name": model})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -406,30 +289,6 @@ func (s *Server) ServeModels(w http.ResponseWriter) {
 	})
 }
 
-func writeSSE(w http.ResponseWriter, data any) error {
-	b, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	if event, ok := data.(map[string]any); ok {
-		if eventType, ok := event["type"].(string); ok && strings.HasPrefix(eventType, "response.") {
-			if _, err := fmt.Fprintf(w, "event: %s\n", eventType); err != nil {
-				return err
-			}
-		}
-	}
-	_, err = fmt.Fprintf(w, "data: %s\n\n", b)
-	return err
-}
-
-func requestID() string {
-	return newID("chatcmpl-")
-}
-
 func newID(prefix string) string {
 	return fmt.Sprintf("%s%d-%d", prefix, time.Now().UnixNano(), idCounter.Add(1))
-}
-
-func unixNow() int64 {
-	return time.Now().Unix()
 }

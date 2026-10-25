@@ -52,18 +52,23 @@
 
 - `responses`：`/provider/<id>/v1/responses` 直连，`/provider/<id>/v1/chat/completions` 转成 Responses。
 - `chat`：`/provider/<id>/v1/chat/completions` 直连，`/provider/<id>/v1/responses` 转成 Chat Completions。
+- `generate_content`：`/provider/<id>/v1/{chat/completions,responses}` 先解析成 IR，再编码成 generateContent 请求交给 Google SDK。
 
-两条路径都支持非流式和 SSE 流式。`google` 与 `vertex` route 共用 GenerateContent 适配器，直接把入口 Chat/Responses 请求转换成 Google SDK 类型；它尚未接入上述通用 IR，因此遇到未映射字段会拒绝请求。Anthropic Messages 和 Google Interactions 尚未实现。
+三条路径都支持非流式和 SSE 流式。协议适配器由 `Codec` 组成：`ChatCodec`、`ResponsesCodec`（`convert/`）和 GenerateContent `codec`（`gemini/`），`convert.Hub` 用 IR 把它们两两组合，因此 `chat`、`responses`、`generate_content` 的 3×3 输入/输出组合（含同协议透传）都可转换，见 `gemini/matrix_test.go`。
+
+`google` 与 `vertex` route 共用 GenerateContent 适配器：入口协议解析成 IR，IR 编码成 generateContent 请求体（`contents`、`systemInstruction`、`tools`、`toolConfig`、`generationConfig`），再反序列化成 Google SDK 类型调用上游；不可表达的字段（`store`、`metadata`、未知字段、custom tool 等）在编码阶段明确拒绝。Anthropic Messages 和 Google Interactions 尚未实现。
 
 ## 保真策略
 
-请求和响应都有三种策略：
+只有一种策略，按字段性质分三档：
 
-- `portable`：只发公共语义，遇到不支持的能力报 warning 或拒绝。
-- `preserve`：尽量透传原始字段和 opaque item，适合同协议或兼容协议。
-- `strict`：发现会改变语义的降级立即返回错误。
+1. **保真**：目标协议能表达的字段一律原样映射（结构化输出、多模态、custom tool、allowed_tools、`service_tier`、`output_text.annotations` 等）。
+2. **丢弃调参/元数据**：不影响内容、只是调优或元信息的字段，目标协议不表达时静默丢弃，并记入 `ir.Request.Dropped` 供日志排查：Chat 侧 `user`、`seed`、`logit_bias`、`prediction`、`prompt_cache_key`、`prompt_cache_retention`、`safety_identifier`；Responses 侧 `include`、`prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options`、`safety_identifier`；GenerateContent 侧忽略 `store`、`metadata`、`service_tier`、`parallel_tool_calls`、`text.verbosity`、`reasoning.summary`。
+3. **报错**：丢失会改变语义时返回 400，并说明字段：`previous_response_id`/`conversation`/`background`/`prompt`/`moderation`/`context_management`/`max_tool_calls`、未知顶层字段、内置工具 item、custom tool 转 Gemini、`output_text.annotations` 转 Chat/Gemini、文件与音频转 Gemini、`n>1`、`logprobs`、音频输出、旧 `functions`/`function_call`。
 
-当前默认是 `preserve`。这不承诺 Chat 与 Responses 之间任意字段都能无损互换；真正不可表达的 Responses item 不可能凭空出现在 Chat 响应中。
+加密 reasoning 单独处理：`encrypted_content` 只在 Responses 内可回传（IR `Item.Encrypted` + Responses 写出保留），转 Chat/Gemini 时降级为可见 summary 文本，不报错也不伪造密文。
+
+同协议请求/响应/流式是字节透传，不经 IR；同协议聚合优先保留源协议字段（见边界规则 7）。不承诺 Chat 与 Responses 之间任意字段都能无损互换：真正不可表达的 Responses item 不会凭空出现在 Chat 响应中。
 
 ## 边界规则
 
@@ -73,5 +78,6 @@
 4. 保持 item 顺序；Chat 没有对应结构时只做明确的 projection。
 5. 未知事件可以保留为 opaque，但不得把未知事件当成完成事件。
 6. 转换状态只属于一次请求，不能跨请求复用；未来若支持 `previous_response_id`，需要增加可持久化 conversation store。
-7. 流聚合必须读到 Chat `[DONE]` 或 Responses `completed`、`failed`、`incomplete` 终态；EOF 不能作为成功完成。
+7. 流聚合必须读到 Chat `[DONE]` 或 Responses `completed`、`failed`、`incomplete` 终态；EOF 不能作为成功完成。同协议聚合走 Codec 自己的实现（`AggregateCodec`），保留 chunk 级 `system_fingerprint`/`service_tier` 与 Responses 终态 `response` 对象的额外字段；跨协议聚合才用 IR 累加器重建。
 8. 工具结果按 `call_id` 关联原调用；custom tool 结果通过 `tool_call_type: custom` 保留类型，流式参数优先使用 delta，缺失时从 done item 补齐。
+9. 目标协议不表达的调参/元数据字段（`text.verbosity`、`reasoning.summary`、`include`、`prompt_cache_*` 等）丢弃并记入 `Request.Dropped`；会改变语义的字段（会话状态、内置工具 item、`annotations` 等）报错。`service_tier` 双向映射，`system_fingerprint` 只属于 Chat，转出时按元数据丢弃。
