@@ -1,0 +1,384 @@
+data: {"choices":[{"delta":{"role":"assistant"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"以下是我联网"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"检索后整理"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"的**今天（"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"美国时间 202"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"6 年 10"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 月 25 日"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"）较重要的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" AI 新闻**。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"今天是周日"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，新增的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"重磅产品"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"发布相对少"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，新闻重点集中"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"在**地缘"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"政治、AI伦理"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"与治理**。\n\n"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"## 今日重点\n\n"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"### 1."},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 美中正在形成"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"两大 AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 阵营，"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"其他国家面临"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"“选边”"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"压力\n\n美联"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"社报道，美国"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"主导的 **P"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"ax Silica**"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 与中国推动的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" **World AI Cooperation"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" Organization（世界人工"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"智能合作组织）"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"** 正逐"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"渐形成两套"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" AI、芯片"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"和供应链体系"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"。许多国家"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"试图同时与"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"双方合作，但美国"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"方面已释放信"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"号：深"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"度参与竞争性 AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 阵营，可能"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"影响其作为 Pax Silica “"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"可信伙伴”的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"资格。\n\n哈萨"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"克斯坦被"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"报道为典型"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"案例：一方面参与"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"美国主导的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" AI 供应链"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"合作，另一方面又"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"成为中国相关组织的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"创始成员之一"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"。其核心"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"矛盾是："},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"选择美国更先进"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"的芯片与"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"技术，还是"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"选择中国更便宜"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"、较开放的 AI "},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"生态。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([apnews.com](https://apnews.com/article/9974a3e5dc955a93935d131a4aeb8886?utm_source=openai)"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":")\n\n**"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"为什么重要：**"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"  \n这意味着 AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 竞争正在从"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"企业和模型竞争"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，升级为类似"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"半导体、"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"通信网络的全球"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"技术阵营"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"竞争，可能影响"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"各国的芯"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"片采购、云"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"计算、数据规则"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"和 AI 标准"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"。\n\n### 2"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":". 科技公司"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"开始借助"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"宗教和哲"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"学讨论“如何"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"教 AI 分辨"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"善恶”\n\n美"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"联社今天报道"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，一些科技公司"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"和 AI 研究"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"者正在向宗"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"教学者、伦理"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"学家寻求"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"帮助，试"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"图回答一个基础"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"问题：**AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 应该依据什么"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"判断对错？"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"**\n\n争论焦"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"点包括：AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 是否应该反映"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"多数人的价值观"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"、如何处理不同"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"文化之间的道"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"德冲突，以及"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"企业是否有"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"权决定聊天机器人"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"应该遵守哪些"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"伦理原则。报道"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"也提到，"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"单纯将“"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"多数人的意见”"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"作为道德标准"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，可能会忽"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"视少数群"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"体权益和历史上的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"社会偏见。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([apnews.com](https://apnews.com/article/2bb91e3334fd6d732edf22288cabf4ec?utm_source=openai))\n\n**为什么"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"重要：**  "},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n随着 AI 代理"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"开始替用户购物、"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"发邮件、操作"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"软件甚至做"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"决策，“安全"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"”已经不只是防"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"止模型输出错误"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"信息，也包括模型"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"在现实世界中"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"应遵循什么"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"价值和边界"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"。\n\n## 近"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"几天仍在"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"发酵的 AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 议题\n"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n- **军事 AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 治理：**"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 联合国相关"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"机构近日启动"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"新倡议，"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"讨论 AI 在预警"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"、侦察"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"、作战规划"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"和武装组织"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"中的使用风险。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([apnews.com](https://apnews.com/article/e0a3c48c91a9de89cab72609d185f658?utm_source=openai))\n- **AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 网络攻击风险"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"：** 有报道称"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，攻击者利用"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" AI 代理批"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"量探测和"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"攻击超过 100"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 个公司网站，"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"显示自动化网络"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"攻击的门"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"槛正在下降。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([tomshardware.com](https://www.tomshardware.com/tech-industry/artificial-intelligence/a-chinese-hacker-used-ai-agents-to-break-into-more-than-100-company-websites-deere-and-sharkninja-among-websites-hit-by-open-source-ai-powered-problem-solving-platform-demo?utm_source=openai))"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n- **AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 投资热度"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"与市场担忧"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"：** 近期"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" AI 股票出现明显"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"波动，市场"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"开始担心数据"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"中心、芯片"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"和电力基础"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"设施的投资规模"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"是否可持续。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([apnews.com](https://apnews.com/article/33767691a4a0730b96d6f0c5100ea9b2?utm_source=openai))"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n- **AI"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 代理隐私"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"问题：** Meta"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" 等公司推出的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"“持续运行型"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"” AI 代理"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"可以访问用户的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"应用和个人信息"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"，隐私与"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"授权范围成为主要"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"争议。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"([apnews.com](https://apnews.com/article/449734d41d3750aad7038b761faa49c9?utm_source=openai))"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n\n**一句话"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"总结：**  "},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n今天 AI 新闻的"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"主线不是“"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"又发布了哪个"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"模型”，而是"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" **AI 正在"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"同时成为地缘"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"政治基础设施、"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"现实世界代理和"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"伦理治理问题**"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"。"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"\n\nSources:\n- As the US and China form AI blocs, countries are increasingly torn between them: https://apnews.com/article/9974a3e5dc955a93935d131a4aeb8886?utm_source=openai\n- To make AI morally good, tech companies are turning to religion. But some say it isn't that simple: https://apnews.com/article/2bb91e3334fd6d732edf22288cabf4ec?utm_source=openai\n- New UN initiative will aim to tackle the military uses of AI: https://apnews.com/article/e0a3c48c91a9de89cab72609d185f658?utm_source=openai\n- A Chinese hacker used AI agents to break into more than 100 company websites: https://www.tomshardware.com/tech-industry/artificial-intelligence/a-chinese-hacker-used-ai-agents-to-break-into-more-than-100-company-websites-deere-and-sharkninja-among-websites-hit-by-open-source-ai-powered-problem-solving-platform-demo?utm_source=openai\n- Sharp drops for AI stocks overwhelm markets worldwide as oil prices jump: https://apnews.com/article/33767691a4a0730b96d6f0c5100ea9b2?utm_source=openai\n- AI agents are only as good as the personal information you share. That raises privacy concerns: https://apnews.com/article/449734d41d3750aad7038b761faa49c9?utm_source=openai"},"finish_reason":null,"index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}],"created":1792949858,"id":"resp_07ceb9118c919c37016ade3e62bb8c87d0b1997019a7121286","model":"gpt-5.6-luna","object":"chat.completion.chunk"}
+
+data: [DONE]
+

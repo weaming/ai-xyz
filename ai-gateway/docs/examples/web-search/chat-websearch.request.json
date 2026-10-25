@@ -1,0 +1,8 @@
+{
+  "model": "gpt-5.6-luna",
+  "messages": [
+    {"role": "user", "content": "今天有什么重要的 AI 新闻？请联网搜索后回答，给出链接。"}
+  ],
+  "tools": [{"type": "web_search"}],
+  "stream": false
+}

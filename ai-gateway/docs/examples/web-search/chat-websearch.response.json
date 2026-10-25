@@ -1,0 +1,54 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "annotations": [
+          {
+            "end_index": 467,
+            "start_index": 374,
+            "title": "As the US and China form AI blocs, countries are increasingly torn between them",
+            "type": "url_citation",
+            "url": "https://apnews.com/article/9974a3e5dc955a93935d131a4aeb8886?utm_source=openai"
+          },
+          {
+            "end_index": 889,
+            "start_index": 790,
+            "title": "Introducing the AI Biosecurity Lab - GOV.UK",
+            "type": "url_citation",
+            "url": "https://www.gov.uk/government/news/introducing-the-ai-biosecurity-lab?utm_source=openai"
+          },
+          {
+            "end_index": 1259,
+            "start_index": 1166,
+            "title": "To make AI morally good, tech companies are turning to religion. But some say it isn't that simple",
+            "type": "url_citation",
+            "url": "https://apnews.com/article/2bb91e3334fd6d732edf22288cabf4ec?utm_source=openai"
+          },
+          {
+            "end_index": 1619,
+            "start_index": 1530,
+            "title": "Nvidia's role as AI financier faces first big test as neoclouds take market hit | Longbridge",
+            "type": "url_citation",
+            "url": "https://longbridge.com/quote/NVDA.US/news/302961982?utm_source=openai"
+          }
+        ],
+        "content": "截至**2026年10月25日（周日，美国时间）**，今天较重要的 AI 新闻主要集中在**地缘政治、AI 安全治理和基础设施融资**三个方向：\n\n### 1. 美中正在形成两大 AI 阵营，其他国家面临“选边”压力\n美联社报道，美国主导的 **Pax Silica** 与中国推动的 **World AI Cooperation Organization（WAICO）** 正逐渐形成两个 AI 生态圈。许多国家希望同时获得美国的先进模型和中国的基础设施、应用能力，但未来可能越来越难以保持“两边合作”。  \n**影响：** AI 竞争正从企业和技术竞争，升级为供应链、标准、云服务和国家安全竞争。  \n[阅读美联社报道](https://apnews.com/article/9974a3e5dc955a93935d131a4aeb8886) ([apnews.com](https://apnews.com/article/9974a3e5dc955a93935d131a4aeb8886?utm_source=openai))\n\n### 2. 英国宣布设立全球首个 AI 生物安全实验室\n英国政府于**10月24日**宣布成立 **AI Biosecurity Lab（AIBL）**，政府投入 **1亿英镑**，OpenAI 和 Anthropic 还将提供最高约 **2亿英镑**的模型额度、算力和技术支持。实验室将利用 AI 监测生物威胁、加速疫苗和治疗方法研发，同时降低 AI 被滥用于生物攻击的风险。  \n**影响：** 这是目前政府将“前沿 AI 安全”和“生物安全”结合起来的最明确案例之一。  \n[英国政府公告](https://www.gov.uk/government/news/introducing-the-ai-biosecurity-lab) ([gov.uk](https://www.gov.uk/government/news/introducing-the-ai-biosecurity-lab?utm_source=openai))\n\n### 3. AI 公司开始认真讨论“如何教模型判断对错”\n美联社今日报道，随着 AI 系统越来越自主，科技公司开始研究如何向聊天机器人传授道德判断。一些公司正在与宗教、哲学和伦理学专家合作；Anthropic 被报道为尤其重视宗教与伦理框架的 AI 公司。  \n**影响：** AI 安全议题正在从“模型会不会出错”，扩展到“模型应依据谁的价值观作决定”。这也会涉及文化差异、政治偏见和模型治理问题。  \n[阅读美联社报道](https://apnews.com/article/2bb91e3334fd6d732edf22288cabf4ec) ([apnews.com](https://apnews.com/article/2bb91e3334fd6d732edf22288cabf4ec?utm_source=openai))\n\n### 4. 英伟达从芯片供应商变成 AI 基础设施融资链的重要参与者\n近期报道显示，英伟达不仅销售 GPU，还通过最低收入保障、算力采购承诺等方式支持部分“neocloud”公司建设数据中心。随着相关 AI 云服务公司股价和融资环境承压，市场开始重新评估英伟达在 AI 基础设施融资中的风险敞口。  \n**影响：** AI 热潮的风险可能不再只在模型公司，也会传导至数据中心、债券、云计算公司和芯片供应商。  \n[相关报道摘要](https://longbridge.com/quote/NVDA.US/news/302961982) ([longbridge.com](https://longbridge.com/quote/NVDA.US/news/302961982?utm_source=openai))\n\n### 一句话总结\n**今天 AI 新闻的主线不是又发布了一个新模型，而是 AI 正快速进入国家阵营竞争、国家安全和金融体系。**尤其值得关注的是：AI 生物安全、全球技术阵营分化，以及 AI 数据中心融资是否存在过热风险。",
+        "reasoning_content": "",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1792949818,
+  "id": "resp_09d63cabb0f7e418016ade3e3ab97c87d08f4f89b7bd80460a",
+  "model": "gpt-5.6-luna",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 1387,
+    "completion_tokens_details": { "reasoning_tokens": 576 },
+    "prompt_tokens": 21353,
+    "prompt_tokens_details": { "cached_tokens": 4096 },
+    "total_tokens": 22740
+  }
+}
