@@ -79,7 +79,8 @@ async fn run_http(port: u16) -> Result<()> {
         Arc::new(
             rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default(),
         ),
-        rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
+        rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
+            .disable_allowed_hosts(),
     );
     let router = axum::Router::new().nest_service("/mcp", service);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
