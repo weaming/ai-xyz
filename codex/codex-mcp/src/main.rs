@@ -8,6 +8,7 @@ use anyhow::{Result, bail};
 use rmcp::ErrorData as McpError;
 use rmcp::ServiceExt;
 use rmcp::handler::server::ServerHandler;
+use rmcp::model::CacheScope;
 use rmcp::model::CallToolRequestParams;
 use rmcp::model::CallToolResponse;
 use rmcp::model::ListToolsResult;
@@ -40,7 +41,10 @@ impl ServerHandler for McpServer {
                 std::iter::once(apply_patch::tool())
                     .chain(web_search::tools())
                     .collect(),
-            ))
+            )
+            // 工具集是编译期常量、与调用方无关，可公共缓存；2026-07-28 要求这两个字段必填
+            .with_ttl_ms(300_000)
+            .with_cache_scope(CacheScope::Public))
         }
     }
 
