@@ -1,23 +1,41 @@
 use std::{
     fs,
-    io::{Read, Write},
-    net::{IpAddr, SocketAddr, TcpListener},
+    io::Write,
+    net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use anyhow::{Context, Result, anyhow};
-use reqwest::blocking::{Client, Response as UpstreamResponse};
-use reqwest::header::{CONTENT_TYPE, HOST, HeaderMap, HeaderName, HeaderValue};
+use axum::{
+    Router,
+    body::{Body, Bytes},
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message as ClientMessage, WebSocket},
+    },
+    http::{HeaderMap, HeaderName, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use futures_util::{SinkExt, StreamExt};
+use reqwest::{Client as AsyncClient, blocking::Client};
 use subtle::ConstantTimeEq;
-use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::{Message as UpstreamMessage, client::IntoClientRequest},
+};
 use url::Url;
 
-use crate::auth::{AuthConfig, AuthState};
-use crate::usage::fetch_usage;
-
-const RESPONSE_PATH: &str = "/v1/responses";
-const USAGE_PATH: &str = "/v1/usage";
+use crate::{
+    auth::{AuthConfig, AuthState},
+    usage::fetch_usage,
+};
 
 pub struct ProxyConfig {
     pub bind: IpAddr,
@@ -29,263 +47,389 @@ pub struct ProxyConfig {
     pub auth: AuthConfig,
     pub inbound_token: Option<String>,
     pub server_info: Option<PathBuf>,
+    pub proxy_url: Option<String>,
 }
 
-struct RequestContext {
-    client: Arc<Client>,
-    upstream_url: Arc<Url>,
-    usage_url: Arc<Url>,
-    reset_credits_url: Arc<Url>,
-    host_header: Arc<HeaderValue>,
+struct ProxyState {
+    client: AsyncClient,
+    blocking_client: Client,
+    upstream_url: Url,
+    usage_url: Url,
+    reset_credits_url: Url,
     auth: Arc<AuthState>,
-    inbound_token: Option<Arc<Vec<u8>>>,
+    inbound_token: Option<Vec<u8>>,
+    proxy_url: Option<String>,
 }
 
 pub fn run(config: ProxyConfig) -> Result<()> {
-    let upstream_url = Url::parse(&config.upstream_url).context("解析 --upstream-url 失败")?;
-    let usage_url = Url::parse(&config.usage_url).context("解析 --usage-url 失败")?;
-    let reset_credits_url =
-        Url::parse(&config.reset_credits_url).context("解析 --reset-credits-url 失败")?;
-    let host = upstream_host(&upstream_url)?;
-    let host_header = HeaderValue::from_str(&host).context("构造上游 Host 头失败")?;
-    let auth = Arc::new(AuthState::load(config.auth)?);
-    let inbound_token = config
-        .inbound_token
-        .map(|token| Arc::new(token.into_bytes()));
-    let listener = TcpListener::bind(SocketAddr::from((config.bind, config.port)))
-        .with_context(|| format!("绑定 {}:{} 失败", config.bind, config.port))?;
-    let bound_addr = listener.local_addr().context("读取监听地址失败")?;
-    let server = Server::from_listener(listener, None)
-        .map_err(|error| anyhow!("创建 HTTP 服务失败: {error}"))?;
+    let blocking_client_guard = config.client.clone();
+    let auth_client_guard = config.auth.client.clone();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("创建异步运行时失败")?;
+    let result = runtime.block_on(run_async(config));
+    drop(runtime);
+    drop(blocking_client_guard);
+    drop(auth_client_guard);
+    result
+}
 
+async fn run_async(config: ProxyConfig) -> Result<()> {
+    let mut client_builder = AsyncClient::builder();
+    if let Some(proxy_url) = config.proxy_url.as_deref() {
+        client_builder = client_builder.proxy(reqwest::Proxy::all(proxy_url)?);
+    }
+    let state = Arc::new(ProxyState {
+        client: client_builder.build().context("创建异步 HTTP 客户端失败")?,
+        blocking_client: config.client,
+        upstream_url: Url::parse(&config.upstream_url).context("解析 --upstream-url 失败")?,
+        usage_url: Url::parse(&config.usage_url).context("解析 --usage-url 失败")?,
+        reset_credits_url: Url::parse(&config.reset_credits_url)
+            .context("解析 --reset-credits-url 失败")?,
+        auth: Arc::new(AuthState::load(config.auth)?),
+        inbound_token: config.inbound_token.map(String::into_bytes),
+        proxy_url: config
+            .proxy_url
+            .or_else(|| proxy_from_env(&config.upstream_url)),
+    });
+    let listener = tokio::net::TcpListener::bind(SocketAddr::from((config.bind, config.port)))
+        .await
+        .context("绑定代理监听地址失败")?;
+    let addr = listener.local_addr().context("读取监听地址失败")?;
     if let Some(path) = config.server_info.as_deref() {
-        write_server_info(path, bound_addr.port())?;
+        write_server_info(path, addr.port())?;
     }
     eprintln!(
-        "codex-responses-api listening on http://{bound_addr}{RESPONSE_PATH} and http://{bound_addr}{USAGE_PATH}"
+        "codex-responses-api listening on http://{addr}/v1/responses and http://{addr}/v1/usage"
     );
-
-    let client = Arc::new(config.client);
-    let upstream_url = Arc::new(upstream_url);
-    let usage_url = Arc::new(usage_url);
-    let reset_credits_url = Arc::new(reset_credits_url);
-    let host_header = Arc::new(host_header);
-
-    for request in server.incoming_requests() {
-        let context = RequestContext {
-            client: Arc::clone(&client),
-            upstream_url: Arc::clone(&upstream_url),
-            usage_url: Arc::clone(&usage_url),
-            reset_credits_url: Arc::clone(&reset_credits_url),
-            host_header: Arc::clone(&host_header),
-            auth: Arc::clone(&auth),
-            inbound_token: inbound_token.clone(),
-        };
-        std::thread::spawn(move || {
-            if let Err(error) = handle_request(context, request) {
-                eprintln!("处理请求失败: {error}");
-            }
-        });
-    }
-
-    Err(anyhow!("HTTP 服务意外停止"))
+    let app = Router::new()
+        .route("/v1/responses", post(forward_http).get(forward_websocket))
+        .route("/v1/usage", get(forward_usage))
+        .with_state(state);
+    axum::serve(listener, app)
+        .await
+        .context("HTTP 服务意外停止")
 }
 
-fn handle_request(context: RequestContext, request: Request) -> Result<()> {
-    if !is_authorized(
-        &request,
-        context.inbound_token.as_ref().map(|token| token.as_slice()),
-    ) {
-        respond_error(request, StatusCode(401), "代理鉴权失败", true);
-        return Ok(());
-    }
-
-    if request.method() == &Method::Get && request.url() == USAGE_PATH {
-        let response = match fetch_usage(
-            context.client.as_ref(),
-            context.auth.as_ref(),
-            context.usage_url.as_ref(),
-            context.reset_credits_url.as_ref(),
-        ) {
-            Ok(response) => response,
-            Err(error) => {
-                respond_error(request, StatusCode(502), "读取 Codex 用量失败", false);
-                return Err(error).context("读取 Codex 用量失败");
-            }
-        };
-        respond_json(request, &response)?;
-        return Ok(());
-    }
-
-    if request.method() != &Method::Post || request.url() != RESPONSE_PATH {
-        respond_error(
-            request,
-            StatusCode(404),
-            "只支持 GET /v1/usage 或 POST /v1/responses",
-            false,
-        );
-        return Ok(());
-    }
-
-    let mut body = Vec::new();
-    let mut request = request;
-    if let Err(error) = request.as_reader().read_to_end(&mut body) {
-        respond_error(request, StatusCode(400), "读取请求体失败", false);
-        return Err(error.into());
-    }
-    body = match normalize_request_body(&body) {
-        Ok(body) => body,
-        Err(error) => {
-            respond_error(
-                request,
-                StatusCode(400),
-                "请求体必须是合法 JSON 对象",
-                false,
-            );
-            return Err(error);
-        }
-    };
-    let auth_headers = match context.auth.auth_headers() {
-        Ok(headers) => headers,
-        Err(error) => {
-            respond_error(request, StatusCode(502), "读取 ChatGPT 登录凭证失败", false);
-            return Err(error).context("读取 ChatGPT 登录凭证失败");
-        }
-    };
-    let headers = forward_headers(&request, &auth_headers, &context.host_header);
-    let upstream_response = match context
-        .client
-        .post(context.upstream_url.as_ref().clone())
-        .headers(headers)
-        .body(body)
-        .send()
-    {
-        Ok(response) => response,
-        Err(error) => {
-            respond_error(request, StatusCode(502), "上游请求失败", false);
-            return Err(error).context("转发 Responses API 请求失败");
-        }
-    };
-
-    respond_upstream(request, upstream_response)
-}
-
-fn normalize_request_body(body: &[u8]) -> Result<Vec<u8>> {
-    let mut payload: serde_json::Value =
-        serde_json::from_slice(body).context("解析 Responses API 请求体失败")?;
-    let object = payload
-        .as_object_mut()
-        .context("Responses API 请求体必须是 JSON 对象")?;
-    object.insert("store".to_owned(), serde_json::Value::Bool(false));
-    object.insert("stream".to_owned(), serde_json::Value::Bool(true));
-    serde_json::to_vec(&payload).context("序列化 Responses API 请求体失败")
-}
-
-fn is_authorized(request: &Request, expected: Option<&[u8]>) -> bool {
+fn is_authorized(headers: &HeaderMap, expected: Option<&[u8]>) -> bool {
     let Some(expected) = expected else {
         return true;
     };
-    let Some(header) = request
-        .headers()
-        .iter()
-        .find(|header| header_name_lower(header) == "authorization")
-    else {
-        return false;
-    };
-    let Some(token) = header.value.as_str().strip_prefix("Bearer ") else {
-        return false;
-    };
-    token.as_bytes().ct_eq(expected).into()
-}
-
-fn forward_headers(
-    request: &Request,
-    auth_headers: &HeaderMap,
-    host_header: &HeaderValue,
-) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    for header in request.headers() {
-        let name = header.field.as_str();
-        let lower_name = name.to_ascii_lowercase();
-        if !matches!(
-            lower_name.as_str(),
-            "accept" | "user-agent" | "openai-beta" | "x-openai-client-user-agent"
-        ) {
-            continue;
-        }
-        let Ok(name) = HeaderName::from_bytes(name.as_bytes()) else {
-            continue;
-        };
-        let Ok(value) = HeaderValue::from_bytes(header.value.as_bytes()) else {
-            continue;
-        };
-        headers.append(name, value);
-    }
-
-    for (name, value) in auth_headers {
-        headers.insert(name.clone(), value.clone());
-    }
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(HOST, host_header.clone());
     headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|token| bool::from(token.as_bytes().ct_eq(expected)))
 }
 
-fn respond_upstream(request: Request, upstream: UpstreamResponse) -> Result<()> {
-    let status = upstream.status();
-    let content_length = upstream
-        .content_length()
-        .and_then(|length| usize::try_from(length).ok());
-    let mut response_headers = Vec::new();
+async fn auth_headers(auth: Arc<AuthState>) -> Result<HeaderMap> {
+    tokio::task::spawn_blocking(move || auth.auth_headers())
+        .await
+        .context("认证任务失败")?
+}
+
+async fn forward_http(
+    State(state): State<Arc<ProxyState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !is_authorized(&headers, state.inbound_token.as_deref()) {
+        return unauthorized_response();
+    }
+    let auth = match auth_headers(Arc::clone(&state.auth)).await {
+        Ok(auth) => auth,
+        Err(error) => return error_response(StatusCode::BAD_GATEWAY, error),
+    };
+    let mut upstream_headers = forwarded_http_headers(&headers);
+    upstream_headers.extend(auth);
+    let upstream = match state
+        .client
+        .post(state.upstream_url.clone())
+        .headers(upstream_headers)
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => return error_response(StatusCode::BAD_GATEWAY, error),
+    };
+    let mut response = Response::builder().status(upstream.status());
     for (name, value) in upstream.headers() {
-        if matches!(
+        if !matches!(
             name.as_str(),
             "content-length" | "transfer-encoding" | "connection" | "trailer" | "upgrade"
         ) {
+            response = response.header(name, value);
+        }
+    }
+    response
+        .body(Body::from_stream(upstream.bytes_stream()))
+        .unwrap_or_else(|error| error_response(StatusCode::BAD_GATEWAY, error))
+}
+
+async fn forward_usage(State(state): State<Arc<ProxyState>>, headers: HeaderMap) -> Response {
+    if !is_authorized(&headers, state.inbound_token.as_deref()) {
+        return unauthorized_response();
+    }
+    let result = tokio::task::spawn_blocking(move || {
+        fetch_usage(
+            &state.blocking_client,
+            &state.auth,
+            &state.usage_url,
+            &state.reset_credits_url,
+        )
+    })
+    .await;
+    match result {
+        Ok(Ok(usage)) => axum::Json(usage).into_response(),
+        Ok(Err(error)) => error_response(StatusCode::BAD_GATEWAY, error),
+        Err(error) => error_response(StatusCode::BAD_GATEWAY, error),
+    }
+}
+
+async fn forward_websocket(
+    State(state): State<Arc<ProxyState>>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    if !is_authorized(&headers, state.inbound_token.as_deref()) {
+        return unauthorized_response();
+    }
+    let auth = match auth_headers(Arc::clone(&state.auth)).await {
+        Ok(auth) => auth,
+        Err(error) => return error_response(StatusCode::BAD_GATEWAY, error),
+    };
+    let mut url = state.upstream_url.clone();
+    let scheme = match url.scheme() {
+        "https" => "wss",
+        "http" => "ws",
+        _ => return StatusCode::BAD_GATEWAY.into_response(),
+    };
+    if url.set_scheme(scheme).is_err() {
+        return StatusCode::BAD_GATEWAY.into_response();
+    }
+    let mut request = match url.as_str().into_client_request() {
+        Ok(request) => request,
+        Err(error) => return error_response(StatusCode::BAD_GATEWAY, error),
+    };
+    request
+        .headers_mut()
+        .extend(forwarded_websocket_headers(&headers));
+    request.headers_mut().extend(auth);
+    let upstream = match tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        connect_upstream(request, state.proxy_url.as_deref()),
+    )
+    .await
+    {
+        Ok(Ok((upstream, _))) => upstream,
+        Ok(Err(error)) => return error_response(StatusCode::BAD_GATEWAY, error),
+        Err(error) => return error_response(StatusCode::GATEWAY_TIMEOUT, error),
+    };
+    upgrade
+        .on_upgrade(move |downstream| relay_websocket(downstream, upstream))
+        .into_response()
+}
+
+type UpstreamSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+async fn connect_upstream(
+    request: tokio_tungstenite::tungstenite::http::Request<()>,
+    proxy_url: Option<&str>,
+) -> Result<(
+    UpstreamSocket,
+    tokio_tungstenite::tungstenite::handshake::client::Response,
+)> {
+    let Some(proxy_url) = proxy_url else {
+        return connect_async(request).await.map_err(Into::into);
+    };
+    let proxy = Url::parse(proxy_url).context("解析 WebSocket 代理地址失败")?;
+    if proxy.scheme() != "http" {
+        return Err(anyhow!("WebSocket 代理目前只支持 HTTP CONNECT"));
+    }
+    let host = proxy.host_str().context("WebSocket 代理缺少 host")?;
+    let port = proxy
+        .port_or_known_default()
+        .context("WebSocket 代理缺少 port")?;
+    let mut stream = TcpStream::connect((host, port))
+        .await
+        .context("连接 WebSocket 代理失败")?;
+    let uri = request.uri();
+    let target_host = uri.host().context("WebSocket 上游缺少 host")?;
+    let target_port = uri
+        .port_u16()
+        .unwrap_or(if uri.scheme_str() == Some("wss") {
+            443
+        } else {
+            80
+        });
+    let target = format!("{target_host}:{target_port}");
+    let mut connect = format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n");
+    if !proxy.username().is_empty() || proxy.password().is_some() {
+        let credentials = format!(
+            "{}:{}",
+            proxy.username(),
+            proxy.password().unwrap_or_default()
+        );
+        connect.push_str(&format!(
+            "Proxy-Authorization: Basic {}\r\n",
+            STANDARD.encode(credentials)
+        ));
+    }
+    connect.push_str("\r\n");
+    stream
+        .write_all(connect.as_bytes())
+        .await
+        .context("发送 CONNECT 失败")?;
+    let mut response = Vec::new();
+    while !response.ends_with(b"\r\n\r\n") {
+        if response.len() >= 8192 {
+            return Err(anyhow!("WebSocket 代理响应头过长"));
+        }
+        let mut byte = [0];
+        stream
+            .read_exact(&mut byte)
+            .await
+            .context("读取 CONNECT 响应失败")?;
+        response.push(byte[0]);
+    }
+    if !response.starts_with(b"HTTP/1.1 200 ") && !response.starts_with(b"HTTP/1.0 200 ") {
+        return Err(anyhow!(
+            "WebSocket 代理 CONNECT 失败: {}",
+            String::from_utf8_lossy(&response)
+                .lines()
+                .next()
+                .unwrap_or_default()
+        ));
+    }
+    tokio_tungstenite::client_async_tls(request, stream)
+        .await
+        .context("通过代理连接上游 WebSocket 失败")
+}
+
+async fn relay_websocket(mut downstream: WebSocket, mut upstream: UpstreamSocket) {
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(30));
+    heartbeat.tick().await;
+    loop {
+        tokio::select! {
+            _ = heartbeat.tick() => {
+                if downstream.send(ClientMessage::Ping(Bytes::new())).await.is_err()
+                    || upstream.send(UpstreamMessage::Ping(Vec::new().into())).await.is_err()
+                {
+                    break;
+                }
+            }
+            message = downstream.next() => {
+                let Some(Ok(message)) = message else { break; };
+                let is_close = matches!(message, ClientMessage::Close(_));
+                let mapped = match message {
+                    ClientMessage::Text(text) => UpstreamMessage::Text(text.to_string().into()),
+                    ClientMessage::Binary(bytes) => UpstreamMessage::Binary(bytes),
+                    ClientMessage::Ping(_) => {
+                        if downstream.flush().await.is_err() { break; }
+                        continue;
+                    }
+                    ClientMessage::Pong(_) => continue,
+                    ClientMessage::Close(_) => UpstreamMessage::Close(None),
+                };
+                if upstream.send(mapped).await.is_err() || is_close { break; }
+            }
+            message = upstream.next() => {
+                let Some(Ok(message)) = message else { break; };
+                let is_close = matches!(message, UpstreamMessage::Close(_));
+                let mapped = match message {
+                    UpstreamMessage::Text(text) => ClientMessage::Text(text.to_string().into()),
+                    UpstreamMessage::Binary(bytes) => ClientMessage::Binary(bytes),
+                    UpstreamMessage::Ping(_) => {
+                        if upstream.flush().await.is_err() { break; }
+                        continue;
+                    }
+                    UpstreamMessage::Pong(_) => continue,
+                    UpstreamMessage::Close(_) => ClientMessage::Close(None),
+                    UpstreamMessage::Frame(_) => continue,
+                };
+                if downstream.send(mapped).await.is_err() || is_close { break; }
+            }
+        }
+    }
+}
+
+fn forwarded_http_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut forwarded = HeaderMap::new();
+    for (name, value) in headers {
+        if matches!(
+            name.as_str(),
+            "authorization"
+                | "host"
+                | "connection"
+                | "content-length"
+                | "transfer-encoding"
+                | "te"
+                | "trailer"
+                | "upgrade"
+                | "proxy-authorization"
+                | "proxy-connection"
+        ) {
             continue;
         }
-        if let Ok(header) = Header::from_bytes(name.as_str().as_bytes(), value.as_bytes()) {
-            response_headers.push(header);
+        forwarded.append(name, value.clone());
+    }
+    forwarded
+}
+
+fn forwarded_websocket_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut forwarded = HeaderMap::new();
+    for name in [
+        "accept",
+        "user-agent",
+        "openai-beta",
+        "x-openai-client-user-agent",
+    ] {
+        if let Some(value) = headers.get(name)
+            && let Ok(name) = HeaderName::from_bytes(name.as_bytes())
+        {
+            forwarded.insert(name, value.clone());
         }
     }
-
-    let body: Box<dyn Read + Send> = Box::new(upstream);
-    let response = Response::new(
-        StatusCode(status.as_u16()),
-        response_headers,
-        body,
-        content_length,
-        None,
-    );
-    request.respond(response).map_err(Into::into)
+    forwarded
 }
 
-fn respond_json<T: serde::Serialize>(request: Request, value: &T) -> Result<()> {
-    let body = serde_json::to_string(value).context("序列化 JSON 响应失败")?;
-    let content_type = Header::from_bytes(b"Content-Type", b"application/json")
-        .map_err(|error| anyhow!("构造 JSON Content-Type 失败: {error:?}"))?;
-    request
-        .respond(Response::from_string(body).with_header(content_type))
-        .map_err(Into::into)
-}
-
-fn respond_error(request: Request, status: StatusCode, message: &str, unauthorized: bool) {
-    let mut response = Response::from_string(message).with_status_code(status);
-    if unauthorized && let Ok(header) = Header::from_bytes(b"WWW-Authenticate", b"Bearer") {
-        response = response.with_header(header);
+fn proxy_from_env(upstream_url: &str) -> Option<String> {
+    let upstream = Url::parse(upstream_url).ok()?;
+    let host = upstream.host_str()?;
+    let no_proxy = std::env::var("NO_PROXY")
+        .or_else(|_| std::env::var("no_proxy"))
+        .unwrap_or_default();
+    if no_proxy.split(',').map(str::trim).any(|entry| {
+        entry == "*"
+            || entry.eq_ignore_ascii_case(host)
+            || entry.strip_prefix('.').is_some_and(|suffix| {
+                host.eq_ignore_ascii_case(suffix)
+                    || host
+                        .to_ascii_lowercase()
+                        .ends_with(&format!(".{}", suffix.to_ascii_lowercase()))
+            })
+    }) {
+        return None;
     }
-    let _ = request.respond(response);
+    let names = if upstream.scheme() == "https" {
+        ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]
+    } else {
+        ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]
+    };
+    names
+        .into_iter()
+        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
 }
 
-fn header_name_lower(header: &Header) -> String {
-    header.field.as_str().to_ascii_lowercase().to_string()
+fn error_response(status: StatusCode, error: impl std::fmt::Display) -> Response {
+    eprintln!("代理请求失败: {error}");
+    status.into_response()
 }
 
-fn upstream_host(url: &Url) -> Result<String> {
-    let host = url.host_str().context("上游地址必须包含 host")?;
-    Ok(match url.port() {
-        Some(port) => format!("{host}:{port}"),
-        None => host.to_owned(),
-    })
+fn unauthorized_response() -> Response {
+    (StatusCode::UNAUTHORIZED, [("www-authenticate", "Bearer")]).into_response()
 }
 
 fn write_server_info(path: &Path, port: u16) -> Result<()> {
@@ -294,35 +438,267 @@ fn write_server_info(path: &Path, port: u16) -> Result<()> {
     {
         fs::create_dir_all(parent)?;
     }
-    let content = serde_json::json!({
-        "port": port,
-        "pid": std::process::id(),
-    });
     let mut file = fs::File::create(path)?;
-    writeln!(file, "{}", serde_json::to_string(&content)?)?;
+    writeln!(
+        file,
+        "{}",
+        serde_json::json!({"port": port, "pid": std::process::id()})
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_request_body;
+    use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use serde_json::json;
+    use tokio::time::{Duration, timeout};
+    use tokio_tungstenite::accept_async;
 
-    #[test]
-    fn normalize_request_body_sets_upstream_required_fields() {
-        let body = br#"{"model":"gpt-5.6-luna","input":[],"store":true,"stream":false}"#;
-        let normalized = normalize_request_body(body).expect("请求体应可解析");
-        let payload: serde_json::Value =
-            serde_json::from_slice(&normalized).expect("规范化后的请求体应可解析");
+    fn test_auth_file(temp_dir: &tempfile::TempDir) -> PathBuf {
+        let auth_file = temp_dir.path().join("auth.json");
+        let id_token = format!("header.{}.signature", URL_SAFE_NO_PAD.encode("{}"));
+        fs::write(
+            &auth_file,
+            json!({"tokens": {
+                "id_token": id_token, "access_token": "access-test",
+                "refresh_token": "refresh-test", "account_id": "acct_test"
+            }})
+            .to_string(),
+        )
+        .expect("写入测试认证文件");
+        auth_file
+    }
 
-        assert_eq!(payload["model"], "gpt-5.6-luna");
-        assert_eq!(payload["store"], json!(false));
-        assert_eq!(payload["stream"], json!(true));
+    fn test_state(
+        upstream_url: Url,
+        auth_file: PathBuf,
+        blocking_client: Client,
+    ) -> Arc<ProxyState> {
+        Arc::new(ProxyState {
+            client: AsyncClient::new(),
+            blocking_client: blocking_client.clone(),
+            upstream_url: upstream_url.clone(),
+            usage_url: upstream_url.clone(),
+            reset_credits_url: upstream_url,
+            auth: Arc::new(
+                AuthState::load(AuthConfig {
+                    auth_file,
+                    client: blocking_client,
+                })
+                .expect("读取认证"),
+            ),
+            inbound_token: None,
+            proxy_url: None,
+        })
     }
 
     #[test]
-    fn normalize_request_body_rejects_non_object() {
-        let error = normalize_request_body(br#"[]"#).expect_err("数组不应被接受");
-        assert!(error.to_string().contains("必须是 JSON 对象"));
+    fn websocket_relays_messages_in_both_directions() {
+        let blocking_client = Client::new();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("创建运行时");
+        runtime.block_on(async {
+            let upstream_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("绑定模拟上游");
+            let upstream_addr = upstream_listener.local_addr().expect("读取上游地址");
+            let upstream_task = tokio::spawn(async move {
+                let (stream, _) = upstream_listener.accept().await.expect("接受上游连接");
+                let mut socket = accept_async(stream).await.expect("上游握手");
+                let created = socket
+                    .next()
+                    .await
+                    .expect("读取创建消息")
+                    .expect("创建消息有效");
+                assert_eq!(
+                    created.to_text().expect("文本消息"),
+                    r#"{"type":"response.create"}"#
+                );
+                socket
+                    .send(UpstreamMessage::Text(
+                        r#"{"type":"response.created"}"#.into(),
+                    ))
+                    .await
+                    .expect("发送创建事件");
+                let interrupt = socket
+                    .next()
+                    .await
+                    .expect("读取中断消息")
+                    .expect("中断消息有效");
+                assert_eq!(
+                    interrupt.to_text().expect("文本消息"),
+                    r#"{"type":"response.interrupt"}"#
+                );
+                socket
+                    .send(UpstreamMessage::Text(
+                        r#"{"type":"response.completed"}"#.into(),
+                    ))
+                    .await
+                    .expect("发送完成事件");
+                let next_turn = socket
+                    .next()
+                    .await
+                    .expect("读取下一轮消息")
+                    .expect("下一轮消息有效");
+                assert_eq!(
+                    next_turn.to_text().expect("文本消息"),
+                    r#"{"type":"response.create","input":[]}"#
+                );
+                socket
+                    .send(UpstreamMessage::Text(
+                        r#"{"type":"response.completed","turn":2}"#.into(),
+                    ))
+                    .await
+                    .expect("发送下一轮完成事件");
+            });
+            let temp_dir = tempfile::tempdir().expect("创建临时目录");
+            let auth_file = test_auth_file(&temp_dir);
+            let url = Url::parse(&format!("http://{upstream_addr}/responses")).expect("上游 URL");
+            let state = test_state(url, auth_file, blocking_client);
+            let app = Router::new()
+                .route("/v1/responses", get(forward_websocket))
+                .with_state(state);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("绑定代理");
+            let addr = listener.local_addr().expect("读取代理地址");
+            let server_task = tokio::spawn(async move {
+                axum::serve(listener, app).await.expect("运行代理");
+            });
+            let (mut client, _) = timeout(
+                Duration::from_secs(3),
+                connect_async(format!("ws://{addr}/v1/responses")),
+            )
+            .await
+            .expect("连接超时")
+            .expect("连接代理");
+            client
+                .send(UpstreamMessage::Text(
+                    r#"{"type":"response.create"}"#.into(),
+                ))
+                .await
+                .expect("发送创建消息");
+            assert_eq!(
+                client
+                    .next()
+                    .await
+                    .expect("读取创建事件")
+                    .expect("创建事件有效")
+                    .to_text()
+                    .expect("文本事件"),
+                r#"{"type":"response.created"}"#
+            );
+            client
+                .send(UpstreamMessage::Text(
+                    r#"{"type":"response.interrupt"}"#.into(),
+                ))
+                .await
+                .expect("发送中断消息");
+            assert_eq!(
+                client
+                    .next()
+                    .await
+                    .expect("读取完成事件")
+                    .expect("完成事件有效")
+                    .to_text()
+                    .expect("文本事件"),
+                r#"{"type":"response.completed"}"#
+            );
+            client
+                .send(UpstreamMessage::Text(
+                    r#"{"type":"response.create","input":[]}"#.into(),
+                ))
+                .await
+                .expect("发送下一轮创建消息");
+            assert_eq!(
+                client
+                    .next()
+                    .await
+                    .expect("读取下一轮事件")
+                    .expect("下一轮事件有效")
+                    .to_text()
+                    .expect("文本事件"),
+                r#"{"type":"response.completed","turn":2}"#
+            );
+            timeout(Duration::from_secs(3), upstream_task)
+                .await
+                .expect("上游任务超时")
+                .expect("上游任务失败");
+            server_task.abort();
+        });
+    }
+
+    #[test]
+    fn http_stream_forwards_sse_without_waiting_for_completion() {
+        let blocking_client = Client::new();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("创建运行时");
+        runtime.block_on(async {
+            let upstream_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("绑定模拟上游");
+            let upstream_addr = upstream_listener.local_addr().expect("读取上游地址");
+            let (continue_sender, continue_receiver) = tokio::sync::oneshot::channel::<()>();
+            let upstream_task = tokio::spawn(async move {
+                let (mut stream, _) = upstream_listener.accept().await.expect("接受上游连接");
+                let mut request = Vec::new();
+                let header_end = loop {
+                    let mut chunk = [0; 1024];
+                    let size = stream.read(&mut chunk).await.expect("读取上游请求");
+                    assert!(size > 0, "上游请求提前结束");
+                    request.extend_from_slice(&chunk[..size]);
+                    if let Some(index) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        break index + 4;
+                    }
+                };
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                assert!(headers.contains("POST /responses"));
+                let content_length = headers.lines()
+                    .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length: ").and_then(|value| value.trim().parse::<usize>().ok()))
+                    .expect("请求包含 Content-Length");
+                while request.len() - header_end < content_length {
+                    let mut chunk = [0; 1024];
+                    let size = stream.read(&mut chunk).await.expect("读取请求体");
+                    assert!(size > 0, "请求体提前结束");
+                    request.extend_from_slice(&chunk[..size]);
+                }
+                assert_eq!(&request[header_end..header_end + content_length], b"{\"model\":\"test\",\"input\":[],\"store\":true,\"stream\":true}");
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+                    .await.expect("发送响应头");
+                stream.write_all(b"data: {\"type\":\"response.created\"}\n\n")
+                    .await.expect("发送首个事件");
+                continue_receiver.await.expect("等待首个事件转发");
+                stream.write_all(b"data: {\"type\":\"response.completed\"}\n\n")
+                    .await.expect("发送完成事件");
+            });
+            let temp_dir = tempfile::tempdir().expect("创建临时目录");
+            let url = Url::parse(&format!("http://{upstream_addr}/responses")).expect("上游 URL");
+            let state = test_state(url, test_auth_file(&temp_dir), blocking_client);
+            let app = Router::new().route("/v1/responses", post(forward_http)).with_state(state);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("绑定代理");
+            let addr = listener.local_addr().expect("读取代理地址");
+            let server_task = tokio::spawn(async move { axum::serve(listener, app).await.expect("运行代理"); });
+            let response = AsyncClient::new().post(format!("http://{addr}/v1/responses"))
+                .header("content-type", "application/json")
+                .body("{\"model\":\"test\",\"input\":[],\"store\":true,\"stream\":true}")
+                .send().await.expect("请求代理");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()["content-type"], "text/event-stream");
+            let mut body = response.bytes_stream();
+            let first = timeout(Duration::from_secs(3), body.next())
+                .await.expect("首个事件超时").expect("首个事件存在").expect("首个事件有效");
+            assert!(String::from_utf8_lossy(&first).contains("response.created"));
+            continue_sender.send(()).expect("继续发送事件");
+            let second = timeout(Duration::from_secs(3), body.next())
+                .await.expect("完成事件超时").expect("完成事件存在").expect("完成事件有效");
+            assert!(String::from_utf8_lossy(&second).contains("response.completed"));
+            timeout(Duration::from_secs(3), upstream_task).await.expect("上游任务超时").expect("上游任务失败");
+            server_task.abort();
+        });
     }
 }

@@ -68,6 +68,7 @@ fn main() -> Result<()> {
         auth,
         inbound_token,
         server_info: args.server_info,
+        proxy_url: args.proxy_url,
     })
 }
 
