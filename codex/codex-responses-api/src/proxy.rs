@@ -239,7 +239,10 @@ async fn forward_websocket(
     )
     .await
     {
-        Ok(Ok((upstream, _))) => upstream,
+        Ok(Ok((upstream, _))) => {
+            log_line(format_args!("ws 已连接上游"));
+            upstream
+        }
         Ok(Err(error)) => return error_response(StatusCode::BAD_GATEWAY, error),
         Err(error) => return error_response(StatusCode::GATEWAY_TIMEOUT, error),
     };
@@ -327,18 +330,39 @@ async fn connect_upstream(
 async fn relay_websocket(mut downstream: WebSocket, mut upstream: UpstreamSocket) {
     let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(30));
     heartbeat.tick().await;
+    // 断链诊断：上游断开时用它判断是「请求还没开始」还是「响应中途被掐」
+    let mut upstream_events = 0usize;
+    let mut last_event_type = String::from("-");
+    let mut last_event_at = std::time::Instant::now();
+    let mut has_started = false;
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
-                if downstream.send(ClientMessage::Ping(Bytes::new())).await.is_err()
-                    || upstream.send(UpstreamMessage::Ping(Vec::new().into())).await.is_err()
-                {
+                if let Err(error) = downstream.send(ClientMessage::Ping(Bytes::new())).await {
+                    log_line(format_args!("ws 心跳（下游）失败: {error}"));
+                    break;
+                }
+                if let Err(error) = upstream.send(UpstreamMessage::Ping(Vec::new().into())).await {
+                    log_line(format_args!("ws 心跳（上游）失败: {error}"));
                     break;
                 }
             }
             message = downstream.next() => {
-                let Some(Ok(message)) = message else { break; };
+                let message = match message {
+                    Some(Ok(message)) => message,
+                    Some(Err(error)) => {
+                        log_line(format_args!("ws 下游读错误: {error}"));
+                        break;
+                    }
+                    None => {
+                        log_line(format_args!("ws 下游连接结束"));
+                        break;
+                    }
+                };
                 let is_close = matches!(message, ClientMessage::Close(_));
+                if let ClientMessage::Close(frame) = &message {
+                    log_line(format_args!("ws 下游关闭: {frame:?}"));
+                }
                 let mapped = match message {
                     ClientMessage::Text(text) => UpstreamMessage::Text(text.to_string().into()),
                     ClientMessage::Binary(bytes) => UpstreamMessage::Binary(bytes),
@@ -352,8 +376,43 @@ async fn relay_websocket(mut downstream: WebSocket, mut upstream: UpstreamSocket
                 if upstream.send(mapped).await.is_err() || is_close { break; }
             }
             message = upstream.next() => {
-                let Some(Ok(message)) = message else { break; };
+                let message = match message {
+                    Some(Ok(message)) => message,
+                    Some(Err(error)) => {
+                        log_line(format_args!(
+                            "ws 上游读错误: {error}（已收事件={upstream_events} 最后事件={last_event_type} 已开始响应={has_started} 距上次上游帧={}ms）",
+                            last_event_at.elapsed().as_millis()
+                        ));
+                        break;
+                    }
+                    None => {
+                        log_line(format_args!(
+                            "ws 上游连接结束（已收事件={upstream_events} 最后事件={last_event_type} 已开始响应={has_started}）"
+                        ));
+                        break;
+                    }
+                };
                 let is_close = matches!(message, UpstreamMessage::Close(_));
+                if let UpstreamMessage::Close(frame) = &message {
+                    log_line(format_args!(
+                        "ws 上游关闭: {frame:?}（已收事件={upstream_events} 最后事件={last_event_type}）"
+                    ));
+                }
+                if let UpstreamMessage::Text(text) = &message {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+                        if let Some(event_type) = value.get("type").and_then(|value| value.as_str()) {
+                            upstream_events += 1;
+                            has_started |= event_type.starts_with("response.");
+                            last_event_type = event_type.to_owned();
+                            last_event_at = std::time::Instant::now();
+                            if event_type == "error" {
+                                // 上游用 error 帧说明原因，随后可能直接 RST，必须留证
+                                let detail: String = text.chars().take(1000).collect();
+                                log_line(format_args!("ws 上游错误帧: {detail}"));
+                            }
+                        }
+                    }
+                }
                 let mapped = match message {
                     UpstreamMessage::Text(text) => ClientMessage::Text(text.to_string().into()),
                     UpstreamMessage::Binary(bytes) => ClientMessage::Binary(bytes),
@@ -440,8 +499,16 @@ fn proxy_from_env(upstream_url: &str) -> Option<String> {
 }
 
 fn error_response(status: StatusCode, error: impl std::fmt::Display) -> Response {
-    eprintln!("代理请求失败: {error}");
+    log_line(format_args!("代理请求失败: {error}"));
     status.into_response()
+}
+
+/// 带本地时区的行日志：与 xbot / relay 的日志对时间线时用。
+fn log_line(message: impl std::fmt::Display) {
+    eprintln!(
+        "[{}] {message}",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+    );
 }
 
 fn unauthorized_response() -> Response {
