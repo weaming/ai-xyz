@@ -1,15 +1,15 @@
 [package]
-name = "codex-responses-api"
+name = "codex-proxy"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [lib]
-name = "codex_responses_api"
+name = "codex_proxy"
 path = "src/lib.rs"
 
 [[bin]]
-name = "codex-responses-api"
+name = "codex-proxy"
 path = "src/main.rs"
 
 [dependencies]

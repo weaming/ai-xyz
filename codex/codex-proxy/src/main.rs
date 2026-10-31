@@ -2,11 +2,11 @@ use std::{fs, net::IpAddr, path::PathBuf, str::FromStr};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use codex_responses_api::{AuthConfig, ProxyConfig, run};
+use codex_proxy::{AuthConfig, ProxyConfig, run};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "codex-responses-api",
+    name = "codex-proxy",
     about = "将本机 Codex ChatGPT 登录代理为 Responses API"
 )]
 struct Args {

@@ -4,5 +4,5 @@ install-go:
 install-codex-mcp:
 	cargo install --locked --path codex/codex-mcp --force
 
-install-codex-responses-api:
-	cargo install --locked --path codex/codex-responses-api --force
+install-codex-proxy:
+	cargo install --locked --path codex/codex-proxy --force

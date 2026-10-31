@@ -101,7 +101,7 @@ async fn run_async(config: ProxyConfig) -> Result<()> {
         write_server_info(path, addr.port())?;
     }
     eprintln!(
-        "codex-responses-api listening on http://{addr}/v1/responses and http://{addr}/v1/usage"
+        "codex-proxy listening on http://{addr}/v1/responses and http://{addr}/v1/usage"
     );
     let app = Router::new()
         .route("/v1/responses", post(forward_http).get(forward_websocket))
