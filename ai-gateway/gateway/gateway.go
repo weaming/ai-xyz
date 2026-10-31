@@ -183,6 +183,23 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusNotFound, "未知 route id: "+routeID)
 		return
 	}
+	if isWebSocketUpgrade(request) {
+		if incomingProtocol != convert.ProtocolResponses {
+			writeError(writer, http.StatusBadRequest, "只支持 /provider/<id>/v1/responses 的 WebSocket 升级")
+			return
+		}
+		if !authorize(request, route.config.Auth.Token) {
+			writeError(writer, http.StatusUnauthorized, "缺少有效的 Bearer token")
+			return
+		}
+		upstreamProtocol = route.config.Upstream.Protocol
+		// 升级后由 ReverseProxy 直接 hijack 写 101，请求真正发出前标注状态，日志才不会记成 0
+		gateway.serveResponsesWebSocket(writer, request, routeID, func() {
+			observedWriter.statusCode = http.StatusSwitchingProtocols
+			observedWriter.wroteHeader = true
+		})
+		return
+	}
 	if request.Method != http.MethodPost {
 		writeError(writer, http.StatusMethodNotAllowed, "只支持 POST")
 		return
@@ -433,6 +450,11 @@ func (writer *observedResponseWriter) Flush() {
 	if flusher, ok := writer.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+// Unwrap 让 http.ResponseController 找到底层 writer 的 Hijacker（WebSocket 升级需要）。
+func (writer *observedResponseWriter) Unwrap() http.ResponseWriter {
+	return writer.ResponseWriter
 }
 
 func newHTTPClient(upstream config.Upstream) (*http.Client, error) {

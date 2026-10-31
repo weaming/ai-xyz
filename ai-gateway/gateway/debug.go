@@ -317,6 +317,11 @@ func (writer *captureResponseWriter) Flush() {
 	}
 }
 
+// Unwrap 保持 Hijacker 可用，避免 debug 订阅时破坏 WebSocket 升级。
+func (writer *captureResponseWriter) Unwrap() http.ResponseWriter {
+	return writer.ResponseWriter
+}
+
 func (writer *captureResponseWriter) finish(status int) {
 	if writer.finished {
 		return
