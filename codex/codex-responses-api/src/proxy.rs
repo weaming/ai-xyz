@@ -137,6 +137,11 @@ async fn forward_http(
     if !is_authorized(&headers, state.inbound_token.as_deref()) {
         return unauthorized_response();
     }
+    // ChatGPT 后端只接受 store=false、stream=true，客户端没写或写错时直接 400
+    let body = match normalize_request_body(&body) {
+        Ok(body) => body,
+        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    };
     let auth = match auth_headers(Arc::clone(&state.auth)).await {
         Ok(auth) => auth,
         Err(error) => return error_response(StatusCode::BAD_GATEWAY, error),
@@ -166,6 +171,17 @@ async fn forward_http(
     response
         .body(Body::from_stream(upstream.bytes_stream()))
         .unwrap_or_else(|error| error_response(StatusCode::BAD_GATEWAY, error))
+}
+
+fn normalize_request_body(body: &[u8]) -> Result<Vec<u8>> {
+    let mut payload: serde_json::Value =
+        serde_json::from_slice(body).context("Responses 请求体必须是合法 JSON")?;
+    let object = payload
+        .as_object_mut()
+        .context("Responses 请求体必须是 JSON 对象")?;
+    object.insert("store".to_owned(), serde_json::Value::Bool(false));
+    object.insert("stream".to_owned(), serde_json::Value::Bool(true));
+    serde_json::to_vec(&payload).context("序列化 Responses 请求体失败")
 }
 
 async fn forward_usage(State(state): State<Arc<ProxyState>>, headers: HeaderMap) -> Response {
@@ -667,7 +683,8 @@ mod tests {
                     assert!(size > 0, "请求体提前结束");
                     request.extend_from_slice(&chunk[..size]);
                 }
-                assert_eq!(&request[header_end..header_end + content_length], b"{\"model\":\"test\",\"input\":[],\"store\":true,\"stream\":true}");
+                // 上游只认 store=false、stream=true，代理必须改写后再转发
+                assert_eq!(&request[header_end..header_end + content_length], b"{\"input\":[],\"model\":\"test\",\"store\":false,\"stream\":true}");
                 stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
                     .await.expect("发送响应头");
                 stream.write_all(b"data: {\"type\":\"response.created\"}\n\n")
