@@ -118,6 +118,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	startedAt := time.Now()
 	routeID := ""
+	transport := "http"
 	incomingProtocol := convert.Protocol("")
 	upstreamProtocol := convert.Protocol("")
 	stream := false
@@ -130,6 +131,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			"method", request.Method,
 			"path", request.URL.Path,
 			"route", routeID,
+			"transport", transport,
 			"incoming_protocol", incomingProtocol,
 			"upstream_protocol", upstreamProtocol,
 			"protocol_converted", protocolConverted,
@@ -184,6 +186,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if isWebSocketUpgrade(request) {
+		transport = "ws"
 		if incomingProtocol != convert.ProtocolResponses {
 			writeError(writer, http.StatusBadRequest, "只支持 /provider/<id>/v1/responses 的 WebSocket 升级")
 			return
