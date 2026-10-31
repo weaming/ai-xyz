@@ -14,7 +14,7 @@ use axum::{
         State, WebSocketUpgrade,
         ws::{Message as ClientMessage, WebSocket},
     },
-    http::{HeaderMap, HeaderName, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -100,9 +100,7 @@ async fn run_async(config: ProxyConfig) -> Result<()> {
     if let Some(path) = config.server_info.as_deref() {
         write_server_info(path, addr.port())?;
     }
-    eprintln!(
-        "codex-proxy listening on http://{addr}/v1/responses and http://{addr}/v1/usage"
-    );
+    eprintln!("codex-proxy listening on http://{addr}/v1/responses and http://{addr}/v1/usage");
     let app = Router::new()
         .route("/v1/responses", post(forward_http).get(forward_websocket))
         .route("/v1/usage", get(forward_usage))
@@ -232,6 +230,9 @@ async fn forward_websocket(
     request
         .headers_mut()
         .extend(forwarded_websocket_headers(&headers));
+    request
+        .headers_mut()
+        .insert("user-agent", HeaderValue::from_static(codex_user_agent()));
     request.headers_mut().extend(auth);
     let upstream = match tokio::time::timeout(
         std::time::Duration::from_secs(20),
@@ -445,22 +446,64 @@ fn forwarded_http_headers(headers: &HeaderMap) -> HeaderMap {
                 | "upgrade"
                 | "proxy-authorization"
                 | "proxy-connection"
+                // 本地网关/客户端标识：只在下游链路有意义，别带给上游
+                | "user-agent"
+                | "x-llm-caller"
         ) {
             continue;
         }
         forwarded.append(name, value.clone());
     }
+    forwarded.insert(
+        axum::http::header::USER_AGENT,
+        HeaderValue::from_static(codex_user_agent()),
+    );
     forwarded
+}
+
+const DEFAULT_CODEX_VERSION: &str = "0.165.0";
+
+/// 官方 codex 的客户端标识：版本取本机 codex，取不到用内置默认值。
+///
+/// 上游只应该看到一个普通 codex 客户端，本地网关标识（x-llm-caller 等）不参与。
+fn codex_user_agent() -> &'static str {
+    static AGENT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    AGENT.get_or_init(|| {
+        let version = command_output("codex", &["--version"])
+            .and_then(|text| text.split_whitespace().last().map(str::to_owned))
+            .unwrap_or_else(|| DEFAULT_CODEX_VERSION.to_owned());
+        let os = if cfg!(target_os = "macos") {
+            command_output("sw_vers", &["-productVersion"])
+                .map(|value| format!("Mac OS {value}"))
+                .unwrap_or_else(|| "Mac OS".to_owned())
+        } else {
+            "Linux".to_owned()
+        };
+        // 官方用 os_info 的架构名，macOS 上是 arm64 而不是 aarch64
+        let arch = match std::env::consts::ARCH {
+            "aarch64" => "arm64",
+            other => other,
+        };
+        format!("codex_cli_rs/{version} ({os}; {arch})")
+    })
+}
+
+fn command_output(program: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    (!text.is_empty()).then_some(text)
 }
 
 fn forwarded_websocket_headers(headers: &HeaderMap) -> HeaderMap {
     let mut forwarded = HeaderMap::new();
-    for name in [
-        "accept",
-        "user-agent",
-        "openai-beta",
-        "x-openai-client-user-agent",
-    ] {
+    // user-agent 由代理统一改写成官方 codex 的形态，其余白名单头原样透传
+    for name in ["accept", "openai-beta", "x-openai-client-user-agent"] {
         if let Some(value) = headers.get(name)
             && let Ok(name) = HeaderName::from_bytes(name.as_bytes())
         {
@@ -741,6 +784,11 @@ mod tests {
                 };
                 let headers = String::from_utf8_lossy(&request[..header_end]);
                 assert!(headers.contains("POST /responses"));
+                let lower_headers = headers.to_ascii_lowercase();
+                // 上游只该看到普通 codex 客户端：本地网关标识不外泄，UA 被统一改写
+                assert!(!lower_headers.contains("x-llm-caller"), "本地标识泄漏: {headers}");
+                assert!(lower_headers.contains("user-agent: codex_cli_rs/"), "UA 未改写: {headers}");
+                assert!(!lower_headers.contains("user-agent: openai/js"), "客户端 UA 未覆盖: {headers}");
                 let content_length = headers.lines()
                     .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length: ").and_then(|value| value.trim().parse::<usize>().ok()))
                     .expect("请求包含 Content-Length");
@@ -769,6 +817,8 @@ mod tests {
             let server_task = tokio::spawn(async move { axum::serve(listener, app).await.expect("运行代理"); });
             let response = AsyncClient::new().post(format!("http://{addr}/v1/responses"))
                 .header("content-type", "application/json")
+                .header("x-llm-caller", "xbot")
+                .header("user-agent", "OpenAI/JS 7.4.0")
                 .body("{\"model\":\"test\",\"input\":[],\"store\":true,\"stream\":true}")
                 .send().await.expect("请求代理");
             assert_eq!(response.status(), StatusCode::OK);
