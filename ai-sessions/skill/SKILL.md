@@ -1,12 +1,12 @@
 ---
 name: ai-sessions
-description: 解析本机 Codex、Claude、Qoder、zcode 会话历史，查询过往 AI 对话、工具调用、Token 用量。当用户想回顾之前用 AI 做过什么、找某次会话的内容、统计 AI 使用量时使用。
+description: 解析本机 agy、Codex、Claude、Qoder、zcode 会话历史，查询过往 AI 对话、工具调用、Token 用量。当用户想回顾之前用 AI 做过什么、找某次会话的内容、统计 AI 使用量时使用。
 allowed-tools: [Bash]
 ---
 
 # ai-sessions 技能
 
-使用本地 `ai-sessions` 二进制解析本机 Codex/Claude/Qoder/zcode 会话历史，输出用户输入、
+使用本地 `ai-sessions` 二进制解析本机 agy/Codex/Claude/Qoder/zcode 会话历史，输出用户输入、
 工具调用和最终回答，并统计 Token 用量。适合回顾过去用 AI 做过什么、找回某次会话内容。
 
 ## 常用场景
@@ -71,9 +71,10 @@ Codex 为完整对话历史的 rollout JSONL，zcode 为历史数据库 `~/.zcod
 | `--stat` | — | 只输出元信息，`--format table/csv` 控制格式 |
 | `--plan` | — | 只显示关联了 plan 文件的会话 |
 | `--archived` | — | 列出 Codex 会话时包含已归档会话 |
-| `--source` | `-s` | `all/codex/claude/qoder/qoder-app/zcode`，默认 all |
+| `--source` | `-s` | `all/agy/codex/claude/qoder/qoder-app/zcode`，默认 all |
 | `--date` | `-d` | `YYYY-MM-DD`、`yesterday` 或 `all`，按 TZ 过滤，默认今天 |
 | `--format` | `-f` | `-stat` 用 `table/csv`；`-transcript` 用 `jsonl`（默认）/`md` |
+| `--agy-dir` | — | agy 数据目录，默认 `~/.gemini/antigravity-cli` |
 | `--codex-db` | — | Codex 历史数据库，默认 `~/.codex/thread_history_1.sqlite` |
 | `--claude-dir` | — | Claude 数据目录，默认 `~/.claude` |
 | `--qoder-dir` | — | Qoder 数据目录，默认 `~/.qoder-cn` |
@@ -82,6 +83,7 @@ Codex 为完整对话历史的 rollout JSONL，zcode 为历史数据库 `~/.zcod
 
 ## 数据来源
 
+- agy（Antigravity CLI）：`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`；CWD 与子代理标记读 `conversation_summaries.db`。
 - Codex：内容读 `thread_history_1.sqlite`；Token 从 `~/.codex/sessions/`、`~/.codex/archived_sessions/` 下 rollout JSONL 的 `token_count` 汇总；详情头部的 `Path:` 给出该 rollout JSONL 路径。
 - Claude：`~/.claude/projects/`、`~/.claude/transcripts/` 的 JSONL，plan 按 slug 关联 `~/.claude/plans/`。
 - Qoder（CLI）：`~/.qoder-cn/projects/` 的 JSONL。

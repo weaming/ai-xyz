@@ -319,11 +319,17 @@ func getJSONLThinking(message, item map[string]any) string {
 
 // detectSource 根据会话 ID 和本地历史文件判断来源。
 func detectSource(sessionID string, opts *options) string {
+	if isAgyTranscriptPath(sessionID, opts.agyDir) {
+		return sourceAgy
+	}
 	if strings.HasPrefix(sessionID, "ses_") || strings.HasSuffix(sessionID, ".jsonl") {
 		return sourceClaude
 	}
 	if info, err := os.Stat(expandUser(sessionID)); err == nil && info.Mode().IsRegular() {
 		return sourceClaude
+	}
+	if len(agySessionCandidates(sessionID, opts.agyDir)) > 0 {
+		return sourceAgy
 	}
 	if len(claudeSessionCandidates(sessionID, opts.claudeDir)) > 0 {
 		return sourceClaude
@@ -390,6 +396,16 @@ func loadAllSessions(opts *options, loc *time.Location, targetDate *time.Time) (
 
 	if source == sourceAll || source == sourceQoderApp {
 		sessions = append(sessions, listQoderAppSessions(opts.qoderAppDir, loc, targetDate)...)
+	}
+
+	if source == sourceAll || source == sourceAgy {
+		agySessions, err := listAgySessions(opts.agyDir, loc, targetDate)
+		if err != nil {
+			if source == sourceAgy {
+				return nil, err
+			}
+		}
+		sessions = append(sessions, agySessions...)
 	}
 
 	if source == sourceAll || source == sourceZcode {

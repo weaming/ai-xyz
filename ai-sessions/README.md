@@ -1,6 +1,6 @@
 # ai-sessions
 
-解析本机 Codex、Claude、Qoder、zcode 会话历史，输出用户输入、工具调用和最终回答，并统计 Token 用量。
+解析本机 agy、Codex、Claude、Qoder、zcode 会话历史，输出用户输入、工具调用和最终回答，并统计 Token 用量。
 
 ## 用法
 
@@ -34,9 +34,10 @@ ai-sessions -i 019abc --transcript --format md # 或者 Markdown 分节格式
 --transcript        配合 --session，只输出纯净的 user/assistant 对话全文（不含工具调用等）
 --plan              只显示关联了 plan 文件的会话
 --archived          列出 Codex 会话时包含已归档会话
--s, --source 来源   all/codex/claude/qoder/qoder-app/zcode，默认 all
+-s, --source 来源   all/agy/codex/claude/qoder/qoder-app/zcode，默认 all
 -d, --date 日期     YYYY-MM-DD、yesterday 或 all，按 TZ 时区过滤，默认今天
 -f, --format 格式   -stat 用 table/csv；-transcript 用 jsonl（默认）/md
+--agy-dir 路径      agy 数据目录，默认 ~/.gemini/antigravity-cli
 --codex-db 路径     Codex 历史数据库，默认 ~/.codex/thread_history_1.sqlite
 --claude-dir 路径   Claude 数据目录，默认 ~/.claude
 --qoder-dir 路径    Qoder 数据目录，默认 ~/.qoder-cn
@@ -92,6 +93,7 @@ Qoder App 会话正文无时间戳，时间取自应用状态库（QoderCN globa
 
 ## 数据来源
 
+- agy（Antigravity CLI）：`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`（缺失时回退 `transcript.jsonl`）；工作目录与子代理标记读 `conversation_summaries.db`，列表默认排除子代理会话。
 - Codex：内容读 `thread_history_1.sqlite`；归档状态与 CWD 读自动探测的最新 `~/.codex/state_*.sqlite`；Token 从 `~/.codex/sessions/`、`~/.codex/archived_sessions/` 下 rollout JSONL 的 `token_count` 汇总累计用量与缓存命中率。
 - Claude：`~/.claude/projects/`、`~/.claude/transcripts/` 的 JSONL，plan 按 slug 关联 `~/.claude/plans/`。
 - Qoder（CLI）：`~/.qoder-cn/projects/` 的 JSONL，plan 按 JSONL 中 `planFilePath` 精确关联 `~/.qoder-cn/plans/`。

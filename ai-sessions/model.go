@@ -9,6 +9,7 @@ import (
 // 会话来源名称。
 const (
 	sourceAll      = "all"
+	sourceAgy      = "agy"
 	sourceClaude   = "claude"
 	sourceCodex    = "codex"
 	sourceQoder    = "qoder"
@@ -144,6 +145,7 @@ type sourceConfig struct {
 
 // sourceConfigs 各来源能力配置，未列出的来源使用零值。
 var sourceConfigs = map[string]sourceConfig{
+	sourceAgy:      {},
 	sourceClaude:   {findPlan: findClaudePlanBySlug},
 	sourceCodex:    {hasArchive: true},
 	sourceQoder:    {findPlan: findQoderPlanBySlug},

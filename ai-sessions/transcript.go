@@ -20,6 +20,9 @@ func extractTranscript(session *SessionData) ([]transcriptMessage, error) {
 	if session.Source == sourceZcode {
 		return extractZcodeTranscript(session.Path, session.SessionID)
 	}
+	if session.Source == sourceAgy {
+		return extractAgyTranscript(session.Path)
+	}
 	file, err := os.Open(session.Path)
 	if err != nil {
 		return nil, newHistoryError("读取会话源文件失败：%s：%v", session.Path, err)

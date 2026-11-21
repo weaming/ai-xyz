@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	defaultAgyDir        = filepath.Join(homeDir(), ".gemini", "antigravity-cli")
 	defaultCodexDatabase = filepath.Join(homeDir(), ".codex", "thread_history_1.sqlite")
 	defaultClaudeDir     = filepath.Join(homeDir(), ".claude")
 	defaultQoderDir      = filepath.Join(homeDir(), ".qoder-cn")
@@ -32,6 +33,7 @@ type options struct {
 	archived      bool
 	source        string
 	dateText      string
+	agyDir        string
 	codexDatabase string
 	claudeDir     string
 	qoderDir      string
@@ -59,6 +61,7 @@ func parseFlags() (*options, error) {
 	flag.StringVar(&opts.source, "s", sourceAll, "")
 	flag.StringVar(&opts.dateText, "date", "", "按 TZ 时区过滤日期：YYYY-MM-DD、yesterday 或 all（全部日期），默认今天")
 	flag.StringVar(&opts.dateText, "d", "", "")
+	flag.StringVar(&opts.agyDir, "agy-dir", defaultAgyDir, "agy 数据目录")
 	flag.StringVar(&opts.codexDatabase, "codex-db", defaultCodexDatabase, "Codex 历史数据库")
 	flag.StringVar(&opts.claudeDir, "claude-dir", defaultClaudeDir, "Claude 数据目录")
 	flag.StringVar(&opts.qoderDir, "qoder-dir", defaultQoderDir, "Qoder 数据目录")
@@ -66,7 +69,7 @@ func parseFlags() (*options, error) {
 	flag.StringVar(&opts.zcodeDatabase, "zcode-db", defaultZcodeDatabase, "zcode 历史数据库")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "解析 Codex、Claude、Qoder、新版 Qoder 应用或 zcode 会话历史，输出输入、工具调用和最终输出。\n")
+		fmt.Fprintf(out, "解析 agy、Codex、Claude、Qoder、新版 Qoder 应用或 zcode 会话历史，输出输入、工具调用和最终输出。\n")
 		fmt.Fprintf(out, "示例：ai-sessions -q tantivy；ai-sessions -i 019... -t 2；ai-sessions --source claude\n")
 		aliases := map[string]string{"session": "i", "query": "q", "source": "s", "date": "d", "turn": "t", "format": "f"}
 		flag.CommandLine.VisitAll(func(f *flag.Flag) {
@@ -185,6 +188,8 @@ func main() {
 		captureThinking := opts.think
 		var session *SessionData
 		switch source {
+		case sourceAgy:
+			session, err = parseAgy(opts.session, opts.agyDir, loc, captureToolDetails, captureThinking)
 		case sourceCodex:
 			session, err = parseCodex(opts.session, opts.codexDatabase, loc, captureToolDetails, captureThinking)
 		case sourceQoder:
